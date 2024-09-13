@@ -1,0 +1,36 @@
+{% set data = load_setup_py_data() %}
+
+package:
+  name: ts-m1m3-utils
+  version: {{ data.get('version') }}
+
+source:
+  path: ../
+
+build:
+  noarch: python
+  script: {{PYTHON}} -m pip install --no-deps --ignore-installed .
+  entry_points:
+    - m1m3-bump-tests-times = lsst.ts.m1m3.utils.bump_tests_times:run
+
+test:
+  requires:
+    - ts-conda-build ==0.4
+    - lsst-efd-client
+  source_files:
+    - python
+    - tests
+  commands:
+    - pytest
+
+requirements:
+  build:
+    - python {{python}}
+    - ts-conda-build ==0.4
+  host:
+    - python {{python}}
+    - setuptools
+    - setuptools_scm
+  run:
+    - python {{python}}
+    - lsst-efd-client
