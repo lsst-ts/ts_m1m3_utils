@@ -1,0 +1,2 @@
+@Library('JenkinsShared')_
+CondaPipeline([], "ts-m1m3-utils", "lsst.ts.m1m3.utils", "noarch")
