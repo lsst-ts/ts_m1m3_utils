@@ -24,3 +24,5 @@ pytest_session.txt
 .isort.cfg
 .mypy.ini
 .ruff.toml
+.clang-format
+towncrier.toml

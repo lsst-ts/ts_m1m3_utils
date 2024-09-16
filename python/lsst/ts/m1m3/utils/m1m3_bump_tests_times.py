@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# This file is part of ts_criopy
+# This file is part of ts_m1m3_utils
 #
 # Developed for the LSST Telescope and Site.
 # This product includes software developed by the LSST Project
@@ -154,6 +154,8 @@ async def run_loop() -> None:
         print("Secondary bump tests")
         for bump in secondary:
             await print_bump(bump[0], bump[1])
+
+    await client.influx_client.close()
 
 
 def run() -> None:
