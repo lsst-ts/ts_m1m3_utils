@@ -10,11 +10,13 @@ classifiers = [ "Programming Language :: Python :: 3" ]
 urls = { documentation = "https://ts-m1m3-utils.lsst.io", repository = "https://github.com/lsst-ts/ts_m1m3_utils" }
 dynamic = [ "version" ]
 dependencies = [
+  "astropy",
+  "ts_xml",
   "lsst_efd_client",
 ]
 
 [project.scripts]
-m1m3-bump-tests-times = "lsst.ts.m1m3.utils.bump_tests_times:run"
+m1m3-bump-tests-times = "lsst.ts.m1m3.utils.m1m3_bump_tests_times:run"
 
 [tool.setuptools.dynamic]
 version = { attr = "setuptools_scm.get_version" }
