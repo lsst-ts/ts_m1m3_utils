@@ -24,3 +24,4 @@ from .acceleration_and_velocity_fitter import AccelerationAndVelocityFitter
 from .bump_test_times import BumpTestTimes
 from .force_actuator_forces import ForceActuatorForces
 from .force_calculator import ForceCalculator
+from .simulator import Simulator
