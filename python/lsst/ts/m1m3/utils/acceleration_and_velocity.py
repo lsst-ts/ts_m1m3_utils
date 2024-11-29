@@ -30,11 +30,13 @@ import pathlib
 import numpy as np
 import pandas as pd
 from astropy.time import Time
-from lsst.ts.criopy.m1m3 import AccelerationAndVelocityFitter, ForceCalculator
+from lsst.ts.criopy.m1m3 import ForceCalculator
 from lsst.ts.xml.enums.MTM1M3 import DetailedStates
 from lsst.ts.xml.tables.m1m3 import FATABLE_XFA, FATABLE_YFA, FATABLE_ZFA
 from lsst_efd_client import EfdClient
 from tqdm import tqdm
+
+from .acceleration_and_velocity_fitter import AccelerationAndVelocityFitter
 
 tqdm.pandas()
 
@@ -102,6 +104,7 @@ class AccelerationAndVelocity:
         self.detailed_states: pd.DataFrame | None = None
         self.elevations: pd.DataFrame | None = None
         self.fitter: AccelerationAndVelocityFitter | None = None
+        self.gyroscope: pd.DataFrame | None = None
         self.interpolated: pd.DataFrame | None = None
         self.intervals: pd.DataFrame | None = None
         self.mirror: pd.DataFrame | None = None
@@ -120,6 +123,7 @@ class AccelerationAndVelocity:
 
             for loads in [
                 "azimuths",
+                "gyroscope",
                 "accelerometers",
                 "calculated_fam",
                 "coefficients",
@@ -373,9 +377,61 @@ class AccelerationAndVelocity:
         )
         self.calculated_fam.set_index(self.fitter.aav.index, inplace=True)
 
+    async def load_gyroscope(self, start: Time, end: Time) -> None | pd.DataFrame:
+        """Load Gyroscope data in given interval. Those are used for velocities
+        corrections.
+
+        Parameters
+        ----------
+        start : Time
+            Search interval start time.
+        end : Time
+            Search interval end time.
+
+        Returns
+        -------
+        ret : pd.DataFrame
+            Time indexed dataframe with measured gyroscope angular velocity
+            values (angularVelocity[XYZ]).
+        """
+        logging.debug(f"Retrieving gyroscope data for {start.isot} - {end.isot}..")
+        ret = await self.client.select_time_series(
+            "lsst.sal.MTM1M3.gyroData",
+            ["timestamp"] + [f"angularVelocity{a}" for a in "XYZ"],
+            start,
+            end,
+        )
+        if ret.empty:
+            logging.debug("empty, ignored")
+            return None
+        ret.set_index(
+            pd.DatetimeIndex(
+                Time(Time(ret["timestamp"], format="unix_tai"), scale="utc").isot
+            ),
+            inplace=True,
+        )
+        logging.debug(f"..OK ({len(ret.index)} records)")
+        return ret
+
+    async def collect_gyroscope_data(self) -> None:
+        """
+        Collect DC accelerometers data for intervals specified in
+        self.intervals DataFrame.
+
+        Fills self.accelerometers DataFrame.
+        """
+        assert self.intervals is not None
+
+        self.gyroscope = pd.DataFrame()
+        for index, row in self.intervals.iterrows():
+            block_start = row["start"]
+            block_end = row["end"]
+            velocities = await self.load_gyroscope(Time(block_start), Time(block_end))
+            self.gyroscope = pd.concat([self.gyroscope, velocities])
+
     async def load_accelerometers(self, start: Time, end: Time) -> None | pd.DataFrame:
         """Load DC accelerometers data in given interval. Those are used for
-        acceleration  corrections.
+        acceleration corrections.
 
         Parameters
         ----------
@@ -686,6 +742,7 @@ class AccelerationAndVelocity:
         end_time: Time,
         out_dir: pathlib.Path,
         fit_values: str,
+        no_gyroscope: bool,
         no_accelerometers: bool,
         set_new: bool,
         plot: bool,
@@ -696,16 +753,20 @@ class AccelerationAndVelocity:
         Parameters
         ----------
         start_time : Time
-            Fit start time interval,
+            Fit start time interval.
         end_time : Time
             Fit end time interval.
         out_dir : pathlib.Path
             Directory where output files will be stored.
         fit_values : str
             Whenever to fit actual or demand values.
+        no_gyroscope : bool
+            If set to true, don't use Gyroscope values as angular velocities
+            input. Use angular velocities provided by TMA.
         no_accelerometers : bool
-            If set to true, don't use DC accelerometers values for
-            acceleration.
+            If set to true, don't use DC accelerometer's values as angular
+            acceleration input. Use angular accelerations calculated from TMA
+            velocities.
         set_new : bool
             Don't add fit to existing values. If true, it's assumed data were
             collected without acceleration and velocity compensations.
@@ -745,6 +806,28 @@ class AccelerationAndVelocity:
 
         self.raw.sort_index(inplace=True)
 
+        if no_gyroscope is False:
+            if self.gyroscope is None:
+                await self.collect_gyroscope_data()
+
+            assert self.gyroscope is not None
+
+            self.gyroscope.sort_index(inplace=True)
+
+            if hd5_debug is not None:
+                self.gyroscope.to_hdf(hd5_debug, key="gyroscope")
+
+            logging.info(
+                f"Gyroscope data retrieved, has {len(self.gyroscope.index)} rows."
+            )
+
+            self.raw = self.raw.merge(
+                self.gyroscope.rename(columns=lambda n: f"gyroscope_{n}"),
+                how="outer",
+                left_index=True,
+                right_index=True,
+            )
+
         if no_accelerometers is False:
             if self.accelerometers is None:
                 await self.collect_accelerometers_data()
@@ -759,6 +842,7 @@ class AccelerationAndVelocity:
             logging.info(
                 f"Accelerometers data retrieved, has {len(self.accelerometers.index)} rows."
             )
+
             self.raw = self.raw.merge(
                 self.accelerometers.rename(columns=lambda n: f"accelerometers_{n}"),
                 how="outer",
@@ -801,7 +885,9 @@ class AccelerationAndVelocity:
 
         # prepare for fit A @ x = B
         self.fitter = AccelerationAndVelocityFitter(
-            self.mirror, fit_values, fit_values if no_accelerometers else "meters"
+            self.mirror,
+            fit_values if no_gyroscope else "meters",
+            fit_values if no_accelerometers else "meters",
         )
         if hd5_debug is not None:
             self.fitter.aav.to_hdf(hd5_debug, key="A")
@@ -932,12 +1018,20 @@ def parse_arguments() -> argparse.Namespace:
         help="Fit actual or demand accelerations and velocities",
     )
     parser.add_argument(
-        "--no-accelerometers",
+        "--no-gyroscope",
         action="store_true",
-        help="Don't use DC accelerometers, use TMA values",
+        help="Don't use Gyroscope velocities, use TMA values for velocities",
     )
     parser.add_argument(
-        "--plot", default=False, action="store_true", help="Plot graphs during"
+        "--no-accelerometers",
+        action="store_true",
+        help="Don't use DC accelerometers, use TMA values for accelerations",
+    )
+    parser.add_argument(
+        "--plot",
+        default=False,
+        action="store_true",
+        help="Plot graphs during processing",
     )
     parser.add_argument(
         "--config",
@@ -956,7 +1050,7 @@ def parse_arguments() -> argparse.Namespace:
         "--hd5-debug",
         type=pathlib.Path,
         default=None,
-        help="save debug outputs as provided HDF5 file.",
+        help="Save debug outputs into provided HDF5 file",
     )
     parser.add_argument(
         "--out-dir",
@@ -1000,6 +1094,7 @@ async def run_loop() -> None:
         args.end_time,
         args.out_dir,
         args.fit_values,
+        args.no_gyroscope,
         args.no_accelerometers,
         args.set_new,
         args.plot,

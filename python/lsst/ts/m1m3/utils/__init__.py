@@ -20,5 +20,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from .acceleration_and_velocity import AccelerationAndVelocity
+from .acceleration_and_velocity_fitter import AccelerationAndVelocityFitter
 from .bump_test_times import BumpTestTimes
 from .force_actuator_forces import ForceActuatorForces
