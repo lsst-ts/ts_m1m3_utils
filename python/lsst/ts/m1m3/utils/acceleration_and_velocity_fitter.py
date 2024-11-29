@@ -96,6 +96,7 @@ class AccelerationAndVelocityFitter:
                 "V_z2": self.velocities["Z"].pow(2),
                 "V_xz": self.velocities["X"].mul(self.velocities["Z"]),
                 "V_yz": self.velocities["Y"].mul(self.velocities["Z"]),
+                "V_xy": self.velocities["X"].mul(self.velocities["Y"]),
                 "A_x": self.accelerations["X"],
                 "A_y": self.accelerations["Y"],
                 "A_z": self.accelerations["Z"],
