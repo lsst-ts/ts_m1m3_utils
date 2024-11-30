@@ -30,7 +30,7 @@ class AavTest(unittest.TestCase):
     def test_hd5(self) -> None:
         aav = AccelerationAndVelocity(
             "summit",
-            pathlib.Path(os.path.dirname(os.path.abspath(__file__))) / "data/aav",
+            pathlib.Path(os.path.dirname(os.path.abspath(__file__))) / "data",
             None,
         )
         self.assertNotEqual(aav, None)
