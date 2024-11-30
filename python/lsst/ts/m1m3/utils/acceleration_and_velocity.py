@@ -415,10 +415,10 @@ class AccelerationAndVelocity:
 
     async def collect_gyroscope_data(self) -> None:
         """
-        Collect DC accelerometers data for intervals specified in
-        self.intervals DataFrame.
+        Collect gyroscope data for intervals specified in self.intervals
+        DataFrame.
 
-        Fills self.accelerometers DataFrame.
+        Fills self.gyroscope DataFrame.
         """
         assert self.intervals is not None
 
@@ -713,7 +713,7 @@ class AccelerationAndVelocity:
 
         import matplotlib.pyplot as plt
 
-        fig, axes = plt.subplots(nrows=11, ncols=1, sharex=True)
+        fig, axes = plt.subplots(nrows=12, ncols=1, sharex=True)
 
         for r, ax in enumerate("xyz"):
             self.fitter.aav[f"V_{ax}2"].mul(RAD2D).plot(
@@ -721,8 +721,8 @@ class AccelerationAndVelocity:
                 style=".",
             )
 
-        for r, ax in enumerate("xy"):
-            self.fitter.aav[f"V_{ax}z"].mul(RAD2D).plot(
+        for r, ax in enumerate(["xz", "yz", "xy"]):
+            self.fitter.aav[f"V_{ax}"].mul(RAD2D).plot(
                 ax=axes[r + 3],
                 style=".",
             )
@@ -730,7 +730,7 @@ class AccelerationAndVelocity:
         for r, ax in enumerate([f"f{a}" for a in "xyz"] + [f"m{a}" for a in "xyz"]):
             self.residuals.plot(
                 y=[ax, f"residuals_{ax}"],
-                ax=axes[r + 5],
+                ax=axes[r + 6],
                 style=".",
             )
 

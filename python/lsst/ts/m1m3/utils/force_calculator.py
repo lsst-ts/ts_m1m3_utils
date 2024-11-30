@@ -617,8 +617,8 @@ class ForceCalculator:
         Parameters
         ----------
         sets : pd.DataFrame
-            New acceleration and velocities coefficients. Set of 8 member
-            vectors (XX, YY, ZZ, XZ and YZ angular velocities coefficients,
+            New acceleration and velocities coefficients. Set of 9 member
+            vectors (XX, YY, ZZ, XZ, YZ and XY angular velocities coefficients,
             followed by X, Y and Z angular acceleration values). 12 X, 100 Y
             and 156 Z vectors in columns, marked X0..11, Y0..99 and Z0..156.
         """
