@@ -248,6 +248,7 @@ class AccelerationAndVelocity:
                 f"lsst.sal.MTMount.{axis}",
                 [
                     "timestamp",
+                    "actualAcceleration",
                     "demandPosition",
                     "actualPosition",
                     "demandVelocity",
@@ -265,10 +266,9 @@ class AccelerationAndVelocity:
             )
             ret["timediff"] = ret["timestamp"].diff()
 
-            # calculate derivatives - acceleration
+            # calculate derivatives - demand acceleration
             den = ret["timediff"]
             ret["demandAcceleration"] = ret["demandVelocity"].diff().div(den, axis=0)
-            ret["actualAcceleration"] = ret["actualVelocity"].diff().div(den, axis=0)
             logging.info(
                 f"Retrieved {axis} {len(ret.index)} rows. "
                 f"Ranges: {ret.demandPosition.min():+.2f} .. "

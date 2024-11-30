@@ -110,9 +110,9 @@ class AccelerationAndVelocityFitter:
 
         self.aav = pd.DataFrame(
             {
-                "V_x2": self.velocities["X"].pow(2),
-                "V_y2": self.velocities["Y"].pow(2),
-                "V_z2": self.velocities["Z"].pow(2),
+                "V_x": self.velocities["X"],
+                "V_y": self.velocities["Y"],
+                "V_z": self.velocities["Z"],
                 "V_xz": self.velocities["X"].mul(self.velocities["Z"]),
                 "V_yz": self.velocities["Y"].mul(self.velocities["Z"]),
                 "V_xy": self.velocities["X"].mul(self.velocities["Y"]),

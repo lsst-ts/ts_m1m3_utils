@@ -697,7 +697,7 @@ class ForceCalculator:
         """
         vector = np.hstack(
             [
-                np.square(velocities),
+                velocities,
                 [
                     velocities[0] * velocities[2],
                     velocities[1] * velocities[2],
