@@ -18,6 +18,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import logging
+
 import numpy as np
 import pandas as pd
 from lsst.ts.xml.tables.m1m3 import FATABLE_XFA, FATABLE_YFA, FATABLE_ZFA
@@ -77,6 +79,13 @@ class AccelerationAndVelocityFitter:
                 }
             )
         else:
+            el_sin = np.sin(
+                np.radians(values[f"elevation_{acceleration_kind}Position"])
+            )
+            el_cos = np.cos(
+                np.radians(values[f"elevation_{acceleration_kind}Position"])
+            )
+
             A_azimuth = values[f"azimuth_{acceleration_kind}Acceleration"].mul(D2RAD)
 
             self.accelerations = pd.DataFrame(
@@ -87,6 +96,16 @@ class AccelerationAndVelocityFitter:
                     "Y": A_azimuth.mul(el_cos),
                     "Z": A_azimuth.mul(el_sin),
                 }
+            )
+
+        for ax in "XYZ":
+            logging.info(
+                f"{ax} Velocities: {np.degrees(self.velocities[ax].min())} .."
+                f"{np.degrees(self.velocities[ax].max())}"
+            )
+            logging.info(
+                f"{ax} Accelerations: {np.degrees(self.accelerations[ax].min())} .."
+                f"{np.degrees(self.accelerations[ax].max())}"
             )
 
         self.aav = pd.DataFrame(

@@ -312,19 +312,22 @@ class AccelerationAndVelocity:
         movements.sort_index(inplace=True)
         movements["timediff"] = movements.index.to_series().diff()
 
-        start = None
+        start = movements.index[0]
         end = None
         for index, row in movements[
             (movements.timediff > np.timedelta64(1, "s")) | (movements.timediff is None)
         ].iterrows():
-            end = index - row["timediff"]
-            if start is not None and (end - start) > pd.Timedelta(seconds=0.5):
+            end = index - row["timediff"] + np.timedelta64(500, "ms")
+            if (end - start) > pd.Timedelta(seconds=0.75):
                 if self.was_raised(start, end):
-                    ret.append([start, end])
+                    logging.debug(f"Found interval {start} - {end}")
+                    ret.append((start, end))
                 else:
                     logging.warning(
                         f"Interval {start} - {end} " "mirror was not raised, ignoring."
                     )
+            else:
+                logging.warning(f"Short slew? {start} {end} {end - start}")
             start = index
 
         # if no movement, use full range - this is for short times useful for
