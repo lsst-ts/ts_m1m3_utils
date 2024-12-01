@@ -1,0 +1,23 @@
+ForceActuatorSettings:
+  AccelerationXTablePath: AccelerationXTable.csv
+  AccelerationYTablePath: AccelerationYTable.csv
+  AccelerationZTablePath: AccelerationZTable.csv
+  ElevationXTablePath: ElevationXTable.csv
+  ElevationYTablePath: ElevationYTable.csv
+  ElevationZTablePath: ElevationZTable.csv
+  ForceDistributionXTablePath: ForceDistributionXTable.csv
+  ForceDistributionYTablePath: ForceDistributionYTable.csv
+  ForceDistributionZTablePath: ForceDistributionZTable.csv
+  HardpointForceMomentTablePath: HardpointForceMomentTable.csv
+  MirrorCenterOfGravityX:  1
+  MirrorCenterOfGravityY: -1
+  MirrorCenterOfGravityZ:  1
+  MomentDistributionXTablePath: MomentDistributionXTable.csv
+  MomentDistributionYTablePath: MomentDistributionYTable.csv
+  MomentDistributionZTablePath: MomentDistributionZTable.csv
+  VelocityXTablePath: VelocityXTable.csv
+  VelocityYTablePath: VelocityYTable.csv
+  VelocityZTablePath: VelocityZTable.csv
+  VelocityXZTablePath: VelocityXZTable.csv
+  VelocityYZTablePath: VelocityYZTable.csv
+  VelocityXYTablePath: VelocityXYTable.csv

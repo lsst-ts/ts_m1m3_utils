@@ -1,6 +1,6 @@
-# This file is part of ts_m1m3_utils.
+# This file is part of ts_mtmount.
 #
-# Developed for the LSST Data Management System.
+# Developed for Rubin Observatory Telescope and Site Systems.
 # This product includes software developed by the LSST Project
 # (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
@@ -19,9 +19,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from .acceleration_and_velocity import AccelerationAndVelocity
-from .acceleration_and_velocity_fitter import AccelerationAndVelocityFitter
-from .bump_test_times import BumpTestTimes
-from .force_actuator_forces import ForceActuatorForces
-from .force_calculator import ForceCalculator
-from .simulator import Simulator
+import os
+import pathlib
+import unittest
+
+from lsst.ts.m1m3.utils import AccelerationAndVelocity
+
+
+class AavTest(unittest.TestCase):
+    def test_hd5(self) -> None:
+        aav = AccelerationAndVelocity(
+            "summit",
+            pathlib.Path(os.path.dirname(os.path.abspath(__file__))) / "data",
+            None,
+        )
+        self.assertNotEqual(aav, None)

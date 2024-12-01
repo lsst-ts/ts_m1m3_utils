@@ -1,0 +1,150 @@
+# This file is part of M1M3 SS GUI.
+#
+# Developed for the LSST Telescope and Site Systems.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org). See the COPYRIGHT file at the top - level directory
+# of this distribution for details of code ownership.
+#
+# This program is free software : you can redistribute it and / or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+import logging
+
+import numpy as np
+import pandas as pd
+from lsst.ts.xml.tables.m1m3 import FATABLE_XFA, FATABLE_YFA, FATABLE_ZFA
+
+
+class AccelerationAndVelocityFitter:
+    """Class handling acceleration and velocity fits.
+
+    Parameters
+    ----------
+    values: `pd.DataFrame`
+        Value frame. Shall contain
+        "[elevation|azimuth]_{kind}[Position|Velocity|Acceleration]" and
+        "accelerometers_angularAcceleration[XYZ]" fields.
+    velocity_kind: `str`
+        Velocity kind. Expected either meters for Gyroscope values, or actual
+        or demand for TMA values. Meters are preferred.
+    acceleration_kind: `str`
+        Velocities and accelerations kind. Expected either meters for DC
+        accelerometer, or actual or demand for TMA. Meters are preferred.
+    """
+
+    def __init__(
+        self, values: pd.DataFrame, velocity_kind: str, acceleration_kind: str
+    ):
+        D2RAD = np.radians(1)
+
+        if velocity_kind == "meters":
+            self.velocities = pd.DataFrame(
+                {
+                    "X": values["gyroscope_angularVelocityX"].mul(D2RAD),
+                    "Y": values["gyroscope_angularVelocityY"].mul(D2RAD),
+                    "Z": values["gyroscope_angularVelocityZ"].mul(D2RAD),
+                }
+            )
+
+        else:
+            el_sin = np.sin(np.radians(values[f"elevation_{velocity_kind}Position"]))
+            el_cos = np.cos(np.radians(values[f"elevation_{velocity_kind}Position"]))
+
+            V_azimuth = values[f"azimuth_{velocity_kind}Velocity"].mul(D2RAD)
+
+            self.velocities = pd.DataFrame(
+                {
+                    "X": values[f"elevation_{velocity_kind}Velocity"].mul(D2RAD),
+                    "Y": V_azimuth.mul(el_cos),
+                    "Z": V_azimuth.mul(el_sin),
+                }
+            )
+
+        if acceleration_kind == "meters":
+            self.accelerations = pd.DataFrame(
+                {
+                    "X": values["accelerometers_angularAccelerationX"].mul(D2RAD),
+                    "Y": values["accelerometers_angularAccelerationY"].mul(D2RAD),
+                    "Z": values["accelerometers_angularAccelerationZ"].mul(D2RAD),
+                }
+            )
+        else:
+            el_sin = np.sin(
+                np.radians(values[f"elevation_{acceleration_kind}Position"])
+            )
+            el_cos = np.cos(
+                np.radians(values[f"elevation_{acceleration_kind}Position"])
+            )
+
+            A_azimuth = values[f"azimuth_{acceleration_kind}Acceleration"].mul(D2RAD)
+
+            self.accelerations = pd.DataFrame(
+                {
+                    "X": values[f"elevation_{acceleration_kind}Acceleration"].mul(
+                        D2RAD
+                    ),
+                    "Y": A_azimuth.mul(el_cos),
+                    "Z": A_azimuth.mul(el_sin),
+                }
+            )
+
+        for ax in "XYZ":
+            logging.info(
+                f"{ax} Velocities: {np.degrees(self.velocities[ax].min())} .."
+                f"{np.degrees(self.velocities[ax].max())}"
+            )
+            logging.info(
+                f"{ax} Accelerations: {np.degrees(self.accelerations[ax].min())} .."
+                f"{np.degrees(self.accelerations[ax].max())}"
+            )
+
+        self.aav = pd.DataFrame(
+            {
+                "V_x": self.velocities["X"],
+                "V_y": self.velocities["Y"],
+                "V_z": self.velocities["Z"],
+                "V_xz": self.velocities["X"].mul(self.velocities["Z"]),
+                "V_yz": self.velocities["Y"].mul(self.velocities["Z"]),
+                "V_xy": self.velocities["X"].mul(self.velocities["Y"]),
+                "A_x": self.accelerations["X"],
+                "A_y": self.accelerations["Y"],
+                "A_z": self.accelerations["Z"],
+            }
+        )
+
+        self.aav.fillna(0, inplace=True)
+
+    def do_fit(self, mirror_forces: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Fit right hand side (mirror forces).
+
+        Parameters
+        ----------
+        mirror_forces: pd.DataFrame
+            Contains mirror forces. Columns with keys "X{x_index}",
+            "Y{y_index}" and "Z{z_index}" forms rights side of equation
+            self.aav @ x = {forces}, where x are the fitted coefficients.
+        """
+        coefficients = {}
+        residuals = {}
+
+        for fa in (
+            [f"X{x}" for x in range(FATABLE_XFA)]
+            + [f"Y{y}" for y in range(FATABLE_YFA)]
+            + [f"Z{z}" for z in range(FATABLE_ZFA)]
+        ):
+            B = mirror_forces[fa] * -1000.0
+            coefficients[fa], residuals[fa], rank, s = np.linalg.lstsq(
+                self.aav, B, rcond=None
+            )
+
+        return (pd.DataFrame(coefficients), pd.DataFrame(residuals))

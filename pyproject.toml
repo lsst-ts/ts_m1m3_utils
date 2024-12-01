@@ -11,12 +11,17 @@ urls = { documentation = "https://ts-m1m3-utils.lsst.io", repository = "https://
 dynamic = [ "version" ]
 dependencies = [
   "astropy",
+  "numpy",
+  "pandas",
+  "scipy",
   "ts_xml",
+  "tqdm",
   "lsst_efd_client",
 ]
 
 [project.scripts]
 m1m3-bump-tests-times = "lsst.ts.m1m3.utils.m1m3_bump_tests_times:run"
+m1m3-aav = "lsst.ts.m1m3.utils.acceleration_and_velocity:run"
 
 [tool.setuptools.dynamic]
 version = { attr = "setuptools_scm.get_version" }
