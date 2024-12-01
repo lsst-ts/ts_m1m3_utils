@@ -103,14 +103,14 @@ class ForceCalculatorTestCase(unittest.TestCase):
         velocity = self.calculator.velocity([1, 2, 3])
 
         np.testing.assert_array_equal(
-            velocity.xForces, [0, 88] + [0] * (FATABLE_XFA - 3) + [18]
+            velocity.xForces, [0, 52] + [0] * (FATABLE_XFA - 3) + [18]
         )
         np.testing.assert_array_equal(
-            velocity.yForces, [18] + [0] * (FATABLE_YFA - 2) + [15]
+            velocity.yForces, [18, 0, 0, 4] + [0] * (FATABLE_YFA - 5) + [15]
         )
         np.testing.assert_array_equal(
             velocity.zForces,
-            [0, 12] + [0] * (FATABLE_ZFA - 8) + [9, 0, 0, 0, 0, 21],
+            [0, 14.4, 0, 0, 6] + [0] * (FATABLE_ZFA - 11) + [9, 0, 0, 0, 0, 21],
         )
 
     def test_addition(self) -> None:
@@ -121,14 +121,14 @@ class ForceCalculatorTestCase(unittest.TestCase):
         forces = velocity + acceleration
 
         np.testing.assert_array_equal(
-            forces.xForces, [0, 89] + [0] * (FATABLE_XFA - 3) + [20]
+            forces.xForces, [0, 53] + [0] * (FATABLE_XFA - 3) + [20]
         )
         np.testing.assert_array_equal(
-            forces.yForces, [18] + [0] * (FATABLE_YFA - 2) + [15]
+            forces.yForces, [18, 0, 0, 4] + [0] * (FATABLE_YFA - 5) + [15]
         )
         np.testing.assert_array_equal(
             forces.zForces,
-            [0, 12] + [0] * (FATABLE_ZFA - 8) + [9, 0, 0, 0, 0, 21],
+            [0, 14.4, 0, 0, 6] + [0] * (FATABLE_ZFA - 11) + [9, 0, 0, 0, 0, 21],
         )
 
     def test_clear_quadrants(self) -> None:
