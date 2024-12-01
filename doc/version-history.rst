@@ -4,6 +4,11 @@
 Version History
 ===============
 
+v0.2.0
+------
+
+* m1m3-aav tool to fit acceleration and velocity forces.
+
 v0.1.0
 ------
 
