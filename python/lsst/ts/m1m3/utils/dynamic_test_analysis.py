@@ -11,7 +11,15 @@ from astropy import units as u
 from astropy.time import Time
 from lsst.summit.utils.efdUtils import getEfdData
 from lsst.summit.utils.tmaUtils import TMAEvent, TMAEventMaker
-from lsst.ts.xml.tables.m1m3 import HP_COUNT
+from lsst.ts.xml.tables.m1m3 import (
+    FATable,
+    ForceActuatorData,
+    FAOrientation,
+    HP_COUNT,
+    FAOrientation,
+)
+from lsst.ts.m1m3.utils.force_actuator_forces import ForceActuatorForces
+
 
 HAS_EFD_CLIENT = True
 try:
@@ -98,70 +106,141 @@ class M1M3Query:
         self.measured_forces_topics += [f"m{i}" for i in "xyz"]
 
         self.force_actuator_topics = [
-            f"primaryCylinderFollowingError{i}" for i in range(10,156)
+            f"primaryCylinderFollowingError{i}" for i in range(10, 156)
         ]
         self.force_actuator_topics += [
-            f"secondaryCylinderFollowingError{i}" for i in range(10,156)
+            f"secondaryCylinderFollowingError{i}" for i in range(10, 156)
         ]
-        
-    def query_force_actuator_following_error_dataset(self) -> pd.DataFrame:
+
+    async def query_force_actuator_following_error_dataset(
+        self,
+    ) -> pd.DataFrame:
         evt = self.event
-        query_config = {
-            "force_actuator_forces": {
-                "topic": "lsst.sal.MTM1M3.forceActuatorData",
-                "columns": self.force_actuator_topics,
-                "err_msg": (
-                    "No hard-point data found for event" f"{evt.seqNum} on {evt.dayObs}"
-                ),
+        pad = self.outer_pad
+        faf = ForceActuatorForces(
+            start=evt.begin - pad,
+            end=evt.end + pad,
+            client=self.client,
+        )
+        # Query datasets
+        following_error_frame = await faf.following_errors()
+
+        fa_sel_dict = {
+            "primary": {
+                key: [] for key in ["all", "fa_quadrant", "fa_orientation"]
             },
-            "tma_az": {
-                "topic": "lsst.sal.MTMount.azimuth",
-                "columns": [
-                    "timestamp",
-                    "actualPosition",
-                    "actualVelocity",
-                    "actualTorque",
-                ],
-                "err_msg": (
-                    "No TMA azimuth data found for event"
-                    f"{evt.seqNum} on {evt.dayObs}"
-                ),
-                "reset_index": True,
-                "rename_columns": {
-                    "actualTorque": "az_actual_torque",
-                    "actualVelocity": "az_actual_velocity",
-                    "actualPosition": "az_actual_position",
-                },
-            },
-            "tma_el": {
-                "topic": "lsst.sal.MTMount.elevation",
-                "columns": [
-                    "timestamp",
-                    "actualPosition",
-                    "actualVelocity",
-                    "actualTorque",
-                ],
-                "err_msg": (
-                    "No TMA elevation data found for event"
-                    f"{evt.seqNum} on {evt.dayObs}"
-                ),
-                "reset_index": True,
-                "rename_columns": {
-                    "actualPosition": "el_actual_position",
-                    "actualTorque": "el_actual_torque",
-                    "actualVelocity": "el_actual_velocity",
-                },
+            "secondary": {
+                key: [] for key in ["all", "fa_quadrant", "fa_orientation"]
             },
         }
 
-        # Query datasets
-        queries = {key: self.query_efd_data(**cfg) for key, cfg in query_config.items()}
-        queries["slew"] = self.event
-        queries["force_actuator_forces"] = compute_summary_stats(queries["force_actuator_forces"])
-        return queries
-    def compute_summary_stats(df: pd.DataFrame) -> pd.DataFrame:
-        return df 
-    def query_dataset(self) -> pd.DataFrame:
+        fa_sel_dict["primary"]["all"] = [
+            i.index for i in FATable if i.index > 10
+        ]
+        fa_sel_dict["secondary"]["all"] = [
+            i.s_index
+            for i in FATable
+            if (i.s_index is not None) and (i.index > 10)
+        ]
+
+        for act_type in ["primary", "secondary"]:
+            for i in fa_sel_dict[act_type]["all"]:
+                fa_info = FATable[i]
+                fa_sel_dict[act_type]["fa_quadrant"].append(fa_info.quadrant)
+                fa_sel_dict[act_type]["fa_orientation"].append(
+                    fa_info.orientation
+                )
+
+            fa_idx = fa_sel_dict[act_type]["all"]
+            following_error_frame = self.compute_following_error_summary_stats(
+                following_error_frame, fa_idx, "all", act_type
+            )
+
+        for quadrant in [1, 2, 3, 4]:
+            fa_idx = [
+                i
+                for i, q in zip(
+                    fa_sel_dict[act_type]["all"],
+                    fa_sel_dict[act_type]["fa_quadrant"],
+                )
+                if q == quadrant
+            ]
+            following_error_frame = self.compute_following_error_summary_stats(
+                following_error_frame, fa_idx, f"quadrant_{quadrant}", act_type
+            )
+        fao_list = [
+            FAOrientation(i).name
+            for i in fa_sel_dict[act_type]["fa_orientation"]
+            if i > 0
+        ]
+        for orientation in fao_list:
+            fa_idx = [
+                i
+                for i, o in zip(
+                    fa_sel_dict[act_type]["all"],
+                    fa_sel_dict[act_type]["fa_orientation"],
+                )
+                if o == FAOrientation[orientation].value
+            ]
+            following_error_frame = self.compute_following_error_summary_stats(
+                following_error_frame,
+                fa_idx,
+                f"orientation_{orientation}",
+                act_type,
+            )
+
+        return following_error_frame
+
+    def compute_following_error_summary_stats(
+        self,
+        following_error_frame: pd.DataFrame,
+        hp_idx_list: list[int],
+        col_key: str,
+        act_type: str,
+    ) -> pd.DataFrame:
+        if act_type == "primary":
+            cols = [
+                f"{act_type}CylinderFollowingError" + str(i)
+                for i in hp_idx_list
+            ]
+        if act_type == "secondary":
+            cols = [
+                f"{act_type}CylinderFollowingError" + str(i)
+                for i in hp_idx_list
+            ]
+
+        following_error_frame[f"{col_key}_{act_type}_max_val"] = (
+            following_error_frame[cols].max(axis=1).values
+        )
+        # min
+        following_error_frame[f"{col_key}_{act_type}_min_val"] = (
+            following_error_frame[cols].min(axis=1).values
+        )
+        # median
+        following_error_frame[f"{col_key}_{act_type}_median_val"] = (
+            following_error_frame[cols].median(axis=1).values
+        )
+        following_error_frame[f"{col_key}_{act_type}_std_val"] = (
+            following_error_frame[cols].std(axis=1).values
+        )
+        # confidence interval
+        following_error_frame[f"{col_key}_{act_type}_q1_val"] = (
+            following_error_frame[cols].quantile(0.16, axis=1).values
+        )
+        following_error_frame[f"{col_key}_{act_type}_q3_val"] = (
+            following_error_frame[cols].quantile(0.84, axis=1).values
+        )
+        # std
+        following_error_frame[f"{act_type}_std_val"] = (
+            following_error_frame.filter(
+                like=f"{act_type}CylinderFollowingError", axis=1
+            )
+            .std(axis=1)
+            .values
+        )
+        return following_error_frame
+
+    async def query_dataset(self) -> pd.DataFrame:
         """
         Queries all the relevant data, resampling them to have the same
         frequency, and merges them into a single dataframe.
@@ -171,14 +250,10 @@ class M1M3Query:
         data : `pd.DataFrame`
             The data.
         """
-        evt = self.event
         query_config = {
             "hp_measured_forces": {
                 "topic": "lsst.sal.MTM1M3.hardpointActuatorData",
                 "columns": self.measured_forces_topics,
-                "err_msg": (
-                    "No hard-point data found for event" f"{evt.seqNum} on {evt.dayObs}"
-                ),
             },
             "tma_az": {
                 "topic": "lsst.sal.MTMount.azimuth",
@@ -188,10 +263,6 @@ class M1M3Query:
                     "actualVelocity",
                     "actualTorque",
                 ],
-                "err_msg": (
-                    "No TMA azimuth data found for event"
-                    f"{evt.seqNum} on {evt.dayObs}"
-                ),
                 "reset_index": True,
                 "rename_columns": {
                     "actualTorque": "az_actual_torque",
@@ -207,10 +278,6 @@ class M1M3Query:
                     "actualVelocity",
                     "actualTorque",
                 ],
-                "err_msg": (
-                    "No TMA elevation data found for event"
-                    f"{evt.seqNum} on {evt.dayObs}"
-                ),
                 "reset_index": True,
                 "rename_columns": {
                     "actualPosition": "el_actual_position",
@@ -221,49 +288,23 @@ class M1M3Query:
         }
 
         # Query datasets
-        queries = {key: self.query_efd_data(**cfg) for key, cfg in query_config.items()}
+        queries = {
+            key: self.query_efd_data(**cfg)
+            for key, cfg in query_config.items()
+        }
+        queries["fa_following_errors"] = (
+            await self.query_force_actuator_following_error_dataset()
+        )
         queries["slew"] = self.event
 
         return queries
-
-    def merge_datasets(self, queries: dict[str, pd.DataFrame]) -> pd.DataFrame:
-        """
-        Merge multiple datasets based on their timestamps.
-
-        Parameters
-        ----------
-        queries (dict[str, pd.DataFrame]):
-            A dictionary of dataframes to be merged.
-
-        Returns
-        -------
-        df : `pd.DataFrame`
-            A merged dataframe.
-        """
-        merge_cfg = {
-            "left_index": True,
-            "right_index": True,
-            "tolerance": timedelta(seconds=1),
-            "direction": "nearest",
-        }
-
-        # self.log.info("Merging datasets")
-        df_list = [df for _, df in queries.items()]
-        merged_df = df_list[0]
-
-        for df in df_list[1:]:
-            merged_df = pd.merge_asof(merged_df, df, **merge_cfg)
-
-        return merged_df
 
     def query_efd_data(
         self,
         topic: str,
         columns: list[str],
-        err_msg: str | None = None,
         reset_index: bool = False,
         rename_columns: dict | None = None,
-        resample: float | None = None,
     ) -> pd.DataFrame:
         """
         Query the EFD data for a given topic and return a dataframe.
@@ -367,322 +408,160 @@ ax_label_dict = {
 }
 
 
-def make_slew_start_plot(
-    stats_frame,
-    query_dict,
-    day_obs,
-    col_key="measuredForce2",
-    exclude_list=[],
-    block="T227",
-    block_info="",
-    out_dir="./plots/",
-    tmax=3.2,
-):
-    """
-    Generate and save a plot showing telemetry data
-    for a time range starting from the beginning of a slew.
-    The slews will be grouped by their SlewState.
-
-    Parameters
-    ----------
-    stats_frame : `pd.DataFrame`
-        A DataFrame containing statistics for each slew.
-    query_dict : `dict`
-        A dictionary containing telemetry data for each slew.
-    day_obs : `int`
-        The observation day identifier (YYYYMMDD).
-    col_key : `str`, optional
-        The telemetry data column to plot. Default is "measuredForce2".
-    exclude_list : `list`, optional
-        A list of sequence numbers to exclude
-        from the plot. Default is an empty list.
-    block : `str`, optional
-        The block identifier for the test. Default is "T227".
-    block_info : `str`, optional
-        Additional information about the block. Default is an empty string.
-    out_dir : `str`, optional
-        The output directory for saving the plot. Default is "./plots/".
-    tmax : `float`, optional
-        The maximum time after the start of the slew to plot,
-        in seconds. Default is 3.2.
-
-    Returns
-    -------
-    fig : `matplotlib.figure.Figure`
-        The figure object of the generated plot.
-    """
-    fig, axs = plt.subplots(3, 3, dpi=125, figsize=(12, 10), sharex=True, sharey=True)
-    axs = axs.flatten()
-    max_val = 200
-
-    for ax_val in range(9):
-        ax = axs[ax_val]
-        slew_sel = stats_frame["state"] == int(ax_map_dict[ax_val])
-        for seq_num in stats_frame["seq_num"][slew_sel].values:
-            if seq_num in exclude_list:
-                continue
-            ydata = query_dict[seq_num]["hp_measured_forces"][col_key]
-            t0 = Time(ydata.index[0])
-            times = Time(ydata.index) - t0
-            time_sel = times < tmax * u.second
-            times = times[time_sel]
-            ydata = ydata[time_sel]
-
-            if np.max(abs(ydata)) > max_val:
-                max_val = np.max(abs(ydata)) * 1.1
-
-            ax.plot(times.sec, ydata, label=f"{seq_num}")
-            ax.set(**ax_label_dict[ax_val])
-        ax.set_xlim(0, tmax)
-
-        ax.tick_params(direction="in")
-
-        if ax_val == 4:
-            ax.axis("off")
-        else:
-            ax.legend(facecolor="none", edgecolor="none")
-    for ax in axs:
-        ax.set_ylim(-max_val, max_val)
-    fig.text(
-        0.5,
-        0.04,
-        "Time after slew start [s]",
-        ha="center",
-        va="center",
-        fontsize=16,
-    )  # x-label
-    fig.text(
-        0.04,
-        0.5,
+class SlewPlotter:
+    def __init__(
+        self,
+        stats_frame,
+        query_dict,
+        query_key,
+        day_obs,
         col_key,
-        ha="center",
-        va="center",
-        rotation="vertical",
-        fontsize=16,
-    )  # y-label
-    plt.suptitle(f"{day_obs} - slew starts\nBLOCK-{block}: {block_info} ", y=0.96)
-    plt.subplots_adjust(hspace=0.02, wspace=0.02)
-    plt.savefig(out_dir + f"{day_obs}_{col_key}_{block}_slew_start.png")
-    plt.close()
-    return fig
+        exclude_list=[],
+        block="T227",
+        block_info="",
+        out_dir="./plots/",
+    ):
+        self.stats_frame = stats_frame
+        self.query_dict = query_dict
+        self.query_key = query_key
+        self.day_obs = day_obs
+        self.col_key = col_key
+        self.exclude_list = exclude_list
+        self.block = block
+        self.block_info = block_info
+        self.out_dir = out_dir
 
-
-def make_slew_stop_plot(
-    stats_frame,
-    query_dict,
-    day_obs,
-    col_key="measuredForce2",
-    exclude_list=[],
-    block="T227",
-    block_info="",
-    out_dir="./plots/",
-    tmin=-3.2,
-):
-    """
-    Generate and save a plot showing telemetry data
-    for a time range starting before the end of a slew.
-    The slews will be grouped by their SlewState.
-
-    Parameters
-    ----------
-    stats_frame : `pd.DataFrame`
-        A DataFrame containing statistics for each slew.
-    query_dict : `dict`
-        A dictionary containing telemetry data for each slew.
-    day_obs : `int`
-        The observation day identifier (YYYYMMDD).
-    col_key : `str`, optional
-        The telemetry data column to plot. Default is "measuredForce2".
-    exclude_list : `list`, optional
-        A list of sequence numbers to exclude from the plot.
-        Default is an empty list.
-    block : `str`, optional
-        The block identifier for the test. Default is "T227".
-    block_info : `str`, optional
-        Additional information about the block. Default is an empty string.
-    out_dir : `str`, optional
-        The output directory for saving the plot. Default is "./plots/".
-    tmin : `float`, optional
-        The minimum time before the end of the slew to plot,
-        in seconds. Default is -3.2.
-
-    Returns
-    -------
-    fig : `matplotlib.figure.Figure`
-        The figure object of the generated plot.
-    """
-
-    fig, axs = plt.subplots(3, 3, dpi=125, figsize=(12, 10), sharex=True, sharey=True)
-    axs = axs.flatten()
-    max_val = 200
-
-    for ax_val in range(9):
-        ax = axs[ax_val]
-        slew_sel = stats_frame["state"] == int(ax_map_dict[ax_val])
-        for seq_num in stats_frame["seq_num"][slew_sel].values:
-            if seq_num in exclude_list:
-                continue
-            ydata = query_dict[seq_num]["hp_measured_forces"][col_key]
-            t0 = Time(ydata.index[-1])
-            times = Time(ydata.index) - t0
-            time_sel = times > tmin * u.second
-            times = times[time_sel]
-            ydata = ydata[time_sel]
-
-            if np.max(abs(ydata)) > max_val:
-                max_val = np.max(abs(ydata)) * 1.1
-
-            ax.plot(times.sec, ydata, label=f"{seq_num}")
-            ax.set(**ax_label_dict[ax_val])
-        ax.set_xlim(tmin, 0)
-
-        ax.tick_params(direction="in")
-
-        if ax_val == 4:
-            ax.axis("off")
-        else:
-            ax.legend(facecolor="none", edgecolor="none")
-    for ax in axs:
-        ax.set_ylim(-max_val, max_val)
-    fig.text(
-        0.5,
-        0.04,
-        "Time before slew stops [s]",
-        ha="center",
-        va="center",
-        fontsize=16,
-    )  # x-label
-    fig.text(
-        0.04,
-        0.5,
-        col_key,
-        ha="center",
-        va="center",
-        rotation="vertical",
-        fontsize=16,
-    )  # y-label
-    plt.suptitle(f"{day_obs} - slew stops\nBLOCK-{block}: {block_info} ", y=0.96)
-    plt.subplots_adjust(hspace=0.02, wspace=0.02)
-    plt.savefig(out_dir + f"{day_obs}_{col_key}_{block}_slew_stop.png")
-    plt.close()
-    return fig
-
-def main_following_error():
-    """
-    Main function to load the configuration file, query telemetry data,
-    and generate slew start and stop plots.
-
-    Command-line Arguments
-    ----------------------
-    config_file : `str`
-        Path to the YAML configuration file.
-
-    Example config:
-    begin_seq_num: 35
-    end_seq_num: 50
-    day_obs: 20241128
-    block_info: "20% GGRR"
-    block: "T293"
-    out_dir: "./plots/20241128_T293_1/"
-    tmax: 3.2
-    tmin: -3.2
-    """
-    parser = argparse.ArgumentParser(description="Load configuration and run analysis.")
-    parser.add_argument(
-        "config_file",
-        type=str,
-        help="Path to the YAML configuration file.",
-    )
-    args = parser.parse_args()
-
-    if not EfdClient:
-        raise RuntimeError("EFD client is not available.")
-
-    # Load configuration from YAML
-    config_file = args.config_file
-    if not os.path.exists(config_file):
-        raise FileNotFoundError(f"Configuration file '{config_file}' not found.")
-
-    with open(config_file, "r") as file:
-        config = yaml.safe_load(file)
-
-    begin_seq_num = config.get("begin_seq_num", None)
-    end_seq_num = config.get("end_seq_num", None)
-    begin_time = config.get("begin_time", None)
-    end_time = config.get("end_time", None)
-    day_obs = config.get("day_obs")
-    block_info = config.get("block_info")
-    block = config.get("block")
-    out_dir = config.get("out_dir")
-    tmax = config.get("tmax")
-    tmin = config.get("tmin")
-    exclude_list = config.get("exclude_list", [])
-    data_dir = config.get("data_dir", "./data/")
-
-    os.makedirs(out_dir, exist_ok=True)
-    os.makedirs(data_dir, exist_ok=True)
-
-    col_keys = ["median_primary_following_error", "median_secondary_following_error"]
-
-    event_maker = TMAEventMaker()
-    events = event_maker.getEvents(day_obs)
-
-    if begin_time is not None and end_time is not None:
-
-        begin_time = Time(begin_time, format="iso")
-        end_time = Time(end_time, format="iso")
-
-        slews = [
-            e
-            for e in events
-            if (e.begin.unix >= begin_time.unix) & (e.end.unix <= end_time.unix)
-        ]
-        print(
-            (
-                f"Using time range: {begin_time} to {end_time},"
-                f"found {len(slews)} slews"
-            )
+    def _generate_plot(
+        self,
+        time_selector,
+        x_label,
+        file_suffix,
+        t_limit,
+        plot_fa_following=False,
+    ):
+        plt.rcParams["axes.labelsize"] = 12
+        fig, axs = plt.subplots(
+            3, 3, dpi=125, figsize=(12, 10), sharex=True, sharey=True
         )
-    else:
+        axs = axs.flatten()
+        max_val = 200
 
-        slews = [
-            e for e in events if (e.seqNum >= begin_seq_num) & (e.seqNum <= end_seq_num)
-        ]
-        print(
+        for ax_val in range(9):
+            ax = axs[ax_val]
+            slew_sel = self.stats_frame["state"] == int(ax_map_dict[ax_val])
+            for seq_num in self.stats_frame["seq_num"][slew_sel].values:
+                if seq_num in self.exclude_list:
+                    continue
+                ydata = self.query_dict[seq_num][self.query_key][self.col_key]
+                t0 = Time(
+                    ydata.index[0]
+                    if time_selector == "start"
+                    else ydata.index[-1]
+                )
+                times = Time(ydata.index) - t0
+                time_sel = (
+                    times < t_limit * u.second
+                    if time_selector == "start"
+                    else times > t_limit * u.second
+                )
+                times = times[time_sel]
+                ydata = ydata[time_sel]
+
+                if plot_fa_following:
+                    median = ydata
+                    q1 = self.query_dict[seq_num][self.query_key][
+                        self.col_key.replace("_median", "_q1")
+                    ][time_sel]
+                    q3 = self.query_dict[seq_num][self.query_key][
+                        self.col_key.replace("_median", "_q3")
+                    ][time_sel]
+                    ax.plot(times.sec, median, label=f"{seq_num}")
+                    ax.fill_between(times.sec, q1, q3, alpha=0.3)
+                    max_val = max(
+                        max_val,
+                        np.max(abs(median)),
+                        np.max(abs(q1)),
+                        np.max(abs(q3)),
+                    )
+                else:
+                    ax.plot(times.sec, ydata, label=f"{seq_num}")
+                    max_val = max(max_val, np.max(abs(ydata)))
+
+                ax.set(**ax_label_dict[ax_val])
             (
-                f"dayobs {day_obs}"
-                f"Using sequence numbers: {begin_seq_num} to {end_seq_num}"
-                f"found {len(slews)} slews"
+                ax.set_xlim(0, t_limit)
+                if time_selector == "start"
+                else ax.set_xlim(t_limit, 0)
             )
+
+            ax.tick_params(direction="in")
+
+            if ax_val == 4:
+                ax.axis("off")
+            else:
+                ax.legend(facecolor="none", edgecolor="none", title="seq_num")
+        for ax in axs:
+            max_val = max_val * 1.1
+            ax.set_ylim(-max_val, max_val)
+        fig.text(
+            0.5,
+            0.04,
+            x_label,
+            ha="center",
+            va="center",
+            fontsize=16,
+        )  # x-label
+        fig.text(
+            0.04,
+            0.5,
+            self.col_key,
+            ha="center",
+            va="center",
+            rotation="vertical",
+            fontsize=16,
+        )  # y-label
+        plt.suptitle(
+            f"{self.col_key}\n{self.day_obs} - {file_suffix}\nBLOCK-{self.block}: {self.block_info} ",
+            y=0.96,
+        )
+        plt.subplots_adjust(hspace=0.02, wspace=0.02)
+        plt.savefig(
+            self.out_dir
+            + f"{self.day_obs}_{self.col_key}_{self.block}_{file_suffix}.png"
+        )
+        plt.close()
+        return fig
+
+    def make_slew_start_plot(self, tmax=3.2):
+        return self._generate_plot(
+            "start", "Time after slew start [s]", "slew_start", tmax
         )
 
-    query_dict = {}
+    def make_slew_stop_plot(self, tmin=-3.2):
+        return self._generate_plot(
+            "stop", "Time before slew stops [s]", "slew_stop", tmin
+        )
 
-    all_forces_list = []
-    for slew in np.asarray(slews):
-        seq_num = slew.seqNum
-        query_result = M1M3Query(slew, event_maker.client, outer_pad=0).query_force_actuator_following_error_dataset()
-        query_result["force_actuator_forces"]["seq_num"] = seq_num
-        query_result["force_actuator_forces"]["day_obs"] = day_obs
-        query_dict[seq_num] = query_result
+    def make_fa_following_slew_start_plot(self, tmax=3.2):
+        return self._generate_plot(
+            "start",
+            "Time after slew start [s]",
+            "fa_following_slew_start",
+            tmax,
+            plot_fa_following=True,
+        )
 
-        # Add seq_num column to forces data and store it
-        forces_data = query_result["hp_measured_forces"].copy()
-        forces_data["seq_num"] = seq_num
-        all_forces_list.append(forces_data)
-    # Concatenate all forces data into a single DataFrame
-    all_forces_df = pd.concat(all_forces_list, axis=0)
+    def make_fa_following_slew_stop_plot(self, tmin=-3.2):
+        return self._generate_plot(
+            "stop",
+            "Time before slew stops [s]",
+            "fa_following_slew_stop",
+            tmin,
+            plot_fa_following=True,
+        )
 
-    forces_csv_path = os.path.join(
-        data_dir, config_file.split("/")[-1].replace(".yaml", "_efd_frame.csv")
-    )
-    all_forces_df = all_forces_df.reset_index()
-    all_forces_df.rename(columns={"index": "time"}, inplace=True)
 
-    all_forces_df.to_csv(forces_csv_path)
-
-    print(f"Saved concatenated forces data to {forces_csv_path}")
-
+def compute_stats_frame(query_dict, day_obs, block, block_info):
     stats_dict = {
         key: []
         for key in [
@@ -694,54 +573,59 @@ def main_following_error():
             "az_end",
             "az_distance",
             "total_distance",
+            "max_hp_force",
+            "min_hp_force",
+            "max_fa_following_error",
+            "min_fa_following_error",
         ]
     }
     for seq_num in query_dict.keys():
         stats_dict["seq_num"].append(seq_num)
         for axis in ["az", "el"]:
-            vals = query_dict[seq_num][f"tma_{axis}"][f"{axis}_actual_position"].values
+            vals = query_dict[seq_num][f"tma_{axis}"][
+                f"{axis}_actual_position"
+            ].values
             stats_dict[f"{axis}_start"].append(vals[0])
             stats_dict[f"{axis}_end"].append(vals[-1])
             stats_dict[f"{axis}_distance"].append((vals[-1] - vals[0]))
         total_distance = np.sqrt(
-            stats_dict["az_distance"][-1] ** 2 + stats_dict["el_distance"][-1] ** 2
+            stats_dict["az_distance"][-1] ** 2
+            + stats_dict["el_distance"][-1] ** 2
         )
         stats_dict["total_distance"].append(total_distance)
+        stats_dict["max_hp_force"].append(
+            query_dict[seq_num]["hp_measured_forces"]
+            .filter(like="measuredForce")
+            .max()
+            .max()
+        )
+        stats_dict["min_hp_force"].append(
+            query_dict[seq_num]["hp_measured_forces"]
+            .filter(like="measuredForce")
+            .min()
+            .min()
+        )
 
+        stats_dict["max_fa_following_error"].append(
+            query_dict[seq_num]["fa_following_errors"][
+                "all_primary_max_val"
+            ].max()
+        )
+        stats_dict["min_fa_following_error"].append(
+            query_dict[seq_num]["fa_following_errors"][
+                "all_primary_min_val"
+            ].min()
+        )
     stats_frame = pd.DataFrame(stats_dict)
     stats_frame["day_obs"] = day_obs
     stats_frame["block"] = block
     stats_frame["block_info"] = block_info.replace("%", "")
     stats_frame["state"] = stats_frame.apply(compute_state, axis=1)
-    stats_csv_path = os.path.join(
-        data_dir, config_file.split("/")[-1].replace(".yaml", "_stats_frame.csv")
-    )
-    stats_frame.to_csv(stats_csv_path)
 
-    for col_key in col_keys:
-        _ = make_slew_start_plot(
-            stats_frame,
-            query_dict,
-            col_key=col_key,
-            exclude_list=exclude_list,
-            day_obs=day_obs,
-            block=block,
-            block_info=block_info,
-            out_dir=out_dir,
-            tmax=tmax,
-        )
-        _ = make_slew_stop_plot(
-            stats_frame,
-            query_dict,
-            col_key=col_key,
-            exclude_list=exclude_list,
-            day_obs=day_obs,
-            block=block,
-            block_info=block_info,
-            out_dir=out_dir,
-            tmin=tmin,
-        )
-def main():
+    return stats_frame
+
+
+async def main():
     """
     Main function to load the configuration file, query telemetry data,
     and generate slew start and stop plots.
@@ -761,7 +645,9 @@ def main():
     tmax: 3.2
     tmin: -3.2
     """
-    parser = argparse.ArgumentParser(description="Load configuration and run analysis.")
+    parser = argparse.ArgumentParser(
+        description="Load configuration and run analysis."
+    )
     parser.add_argument(
         "config_file",
         type=str,
@@ -775,7 +661,9 @@ def main():
     # Load configuration from YAML
     config_file = args.config_file
     if not os.path.exists(config_file):
-        raise FileNotFoundError(f"Configuration file '{config_file}' not found.")
+        raise FileNotFoundError(
+            f"Configuration file '{config_file}' not found."
+        )
 
     with open(config_file, "r") as file:
         config = yaml.safe_load(file)
@@ -796,10 +684,18 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     os.makedirs(data_dir, exist_ok=True)
 
-    col_keys = [f"measuredForce{i}" for i in range(HP_COUNT)]
-    col_keys += [f"f{i}" for i in "xyz"]
-    col_keys += [f"m{i}" for i in "xyz"]
+    hp_col_keys = [f"measuredForce{i}" for i in range(HP_COUNT)]
+    hp_col_keys += [f"f{i}" for i in "xyz"]
+    hp_col_keys += [f"m{i}" for i in "xyz"]
 
+    fa_col_keys = []
+    for act_type in ["primary", "secondary"]:
+        fa_col_keys += [
+            f"{col_key}_{act_type}_max_val" for col_key in ["all"]
+        ]  # , "quadrant", "orientation"]]
+        fa_col_keys += [
+            f"{col_key}_{act_type}_median_val" for col_key in ["all"]
+        ]
     event_maker = TMAEventMaker()
     events = event_maker.getEvents(day_obs)
 
@@ -811,7 +707,8 @@ def main():
         slews = [
             e
             for e in events
-            if (e.begin.unix >= begin_time.unix) & (e.end.unix <= end_time.unix)
+            if (e.begin.unix >= begin_time.unix)
+            & (e.end.unix <= end_time.unix)
         ]
         print(
             (
@@ -822,7 +719,9 @@ def main():
     else:
 
         slews = [
-            e for e in events if (e.seqNum >= begin_seq_num) & (e.seqNum <= end_seq_num)
+            e
+            for e in events
+            if (e.seqNum >= begin_seq_num) & (e.seqNum <= end_seq_num)
         ]
         print(
             (
@@ -834,90 +733,96 @@ def main():
 
     query_dict = {}
 
-    all_forces_list = []
+    hp_forces_list = []
+    fa_following_errors_list = []
     for slew in np.asarray(slews):
         seq_num = slew.seqNum
-        query_result = M1M3Query(slew, event_maker.client, outer_pad=0).query_dataset()
+
+        query_result = await M1M3Query(
+            slew, event_maker.client, outer_pad=0
+        ).query_dataset()
         query_result["hp_measured_forces"]["seq_num"] = seq_num
         query_result["hp_measured_forces"]["day_obs"] = day_obs
+        query_result["fa_following_errors"]["seq_num"] = seq_num
+        query_result["fa_following_errors"]["day_obs"] = day_obs
         query_dict[seq_num] = query_result
 
-        # Add seq_num column to forces data and store it
-        forces_data = query_result["hp_measured_forces"].copy()
-        forces_data["seq_num"] = seq_num
-        all_forces_list.append(forces_data)
+        hp_forces_data = query_result["hp_measured_forces"].copy()
+        fa_following_errors_data = query_result["fa_following_errors"].copy()
+        hp_forces_list.append(hp_forces_data)
+        fa_following_errors_list.append(fa_following_errors_data)
+
     # Concatenate all forces data into a single DataFrame
-    all_forces_df = pd.concat(all_forces_list, axis=0)
+    hp_forces_df = pd.concat(hp_forces_list, axis=0)
+    hp_forces_df = hp_forces_df.reset_index()
+    hp_forces_df.rename(columns={"index": "time"}, inplace=True)
 
-    forces_csv_path = os.path.join(
-        data_dir, config_file.split("/")[-1].replace(".yaml", "_efd_frame.csv")
+    fa_following_errors_df = pd.concat(fa_following_errors_list, axis=0)
+    fa_following_errors_df = fa_following_errors_df.reset_index()
+    fa_following_errors_df.rename(columns={"index": "time"}, inplace=True)
+
+    hp_forces_csv_path = os.path.join(
+        data_dir,
+        config_file.split("/")[-1].replace(".yaml", "_hp_efd_frame.csv"),
     )
-    all_forces_df = all_forces_df.reset_index()
-    all_forces_df.rename(columns={"index": "time"}, inplace=True)
 
-    all_forces_df.to_csv(forces_csv_path)
+    fa_following_error_csv_path = os.path.join(
+        data_dir,
+        config_file.split("/")[-1].replace(".yaml", "_fa_efd_frame.csv"),
+    )
 
-    print(f"Saved concatenated forces data to {forces_csv_path}")
+    hp_forces_df.to_csv(hp_forces_csv_path)
+    fa_following_errors_df.to_csv(fa_following_error_csv_path)
 
-    stats_dict = {
-        key: []
-        for key in [
-            "seq_num",
-            "el_start",
-            "el_end",
-            "el_distance",
-            "az_start",
-            "az_end",
-            "az_distance",
-            "total_distance",
-        ]
-    }
-    for seq_num in query_dict.keys():
-        stats_dict["seq_num"].append(seq_num)
-        for axis in ["az", "el"]:
-            vals = query_dict[seq_num][f"tma_{axis}"][f"{axis}_actual_position"].values
-            stats_dict[f"{axis}_start"].append(vals[0])
-            stats_dict[f"{axis}_end"].append(vals[-1])
-            stats_dict[f"{axis}_distance"].append((vals[-1] - vals[0]))
-        total_distance = np.sqrt(
-            stats_dict["az_distance"][-1] ** 2 + stats_dict["el_distance"][-1] ** 2
-        )
-        stats_dict["total_distance"].append(total_distance)
+    print(
+        f"Saved concatenated forces data to {hp_forces_csv_path} & fa_efd_frame.csv"
+    )
 
-    stats_frame = pd.DataFrame(stats_dict)
-    stats_frame["day_obs"] = day_obs
-    stats_frame["block"] = block
-    stats_frame["block_info"] = block_info.replace("%", "")
-    stats_frame["state"] = stats_frame.apply(compute_state, axis=1)
+    stats_frame = compute_stats_frame(query_dict, day_obs, block, block_info)
     stats_csv_path = os.path.join(
-        data_dir, config_file.split("/")[-1].replace(".yaml", "_stats_frame.csv")
+        data_dir,
+        config_file.split("/")[-1].replace(".yaml", "_stats_frame.csv"),
     )
     stats_frame.to_csv(stats_csv_path)
 
-    for col_key in col_keys:
-        _ = make_slew_start_plot(
-            stats_frame,
-            query_dict,
+    for col_key in hp_col_keys:
+        query_key = "hp_measured_forces"
+        sp = SlewPlotter(
+            stats_frame=stats_frame,
+            query_dict=query_dict,
+            query_key=query_key,
+            day_obs=day_obs,
             col_key=col_key,
             exclude_list=exclude_list,
-            day_obs=day_obs,
             block=block,
             block_info=block_info,
             out_dir=out_dir,
-            tmax=tmax,
         )
-        _ = make_slew_stop_plot(
-            stats_frame,
-            query_dict,
+        sp.make_slew_start_plot(tmax=tmax)
+        sp.make_slew_stop_plot(tmin=tmin)
+
+    for col_key in fa_col_keys:
+        query_key = "fa_following_errors"
+        sp = SlewPlotter(
+            stats_frame=stats_frame,
+            query_dict=query_dict,
+            query_key=query_key,
+            day_obs=day_obs,
             col_key=col_key,
             exclude_list=exclude_list,
-            day_obs=day_obs,
             block=block,
             block_info=block_info,
             out_dir=out_dir,
-            tmin=tmin,
         )
+        if "median" in col_key:
+            sp.make_fa_following_slew_start_plot(tmax=tmax)
+            sp.make_fa_following_slew_stop_plot(tmin=tmin)
+        else:
+            sp.make_slew_start_plot(tmax=tmax)
+            sp.make_slew_stop_plot(tmin=tmin)
 
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+
+    asyncio.run(main())

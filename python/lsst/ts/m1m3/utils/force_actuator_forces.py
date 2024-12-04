@@ -83,7 +83,7 @@ class ForceActuatorForces:
         following_errors: pd.DataFrame
         """
         fields = [f"primaryCylinderFollowingError{fa.index}" for fa in FATable] + [
-            f"primaryCylinderFollowingError{fa.s_index}"
+            f"secondaryCylinderFollowingError{fa.s_index}"
             for fa in FATable
             if fa.s_index is not None
         ]
