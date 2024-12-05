@@ -9,16 +9,15 @@ import pandas as pd
 import yaml
 from astropy import units as u
 from astropy.time import Time
-from lsst.summit.utils.efdUtils import getEfdData
+from lsst.summit.utils.efdUtils import getEfdData, getDayObsForTime
 from lsst.summit.utils.tmaUtils import TMAEvent, TMAEventMaker
 from lsst.ts.xml.tables.m1m3 import (
     FATable,
-    ForceActuatorData,
-    FAOrientation,
     HP_COUNT,
     FAOrientation,
 )
 from lsst.ts.m1m3.utils.force_actuator_forces import ForceActuatorForces
+import warnings
 
 
 HAS_EFD_CLIENT = True
@@ -126,69 +125,70 @@ class M1M3Query:
         following_error_frame = await faf.following_errors()
 
         fa_sel_dict = {
-            "primary": {
-                key: [] for key in ["all", "fa_quadrant", "fa_orientation"]
-            },
-            "secondary": {
-                key: [] for key in ["all", "fa_quadrant", "fa_orientation"]
-            },
+            "primary": {key: [] for key in ["all", "fa_quadrant", "fa_orientation"]},
+            "secondary": {key: [] for key in ["all", "fa_quadrant", "fa_orientation"]},
         }
 
-        fa_sel_dict["primary"]["all"] = [
-            i.index for i in FATable if i.index > 10
-        ]
+        fa_sel_dict["primary"]["all"] = [i.index for i in FATable if i.index > 10]
         fa_sel_dict["secondary"]["all"] = [
-            i.s_index
-            for i in FATable
-            if (i.s_index is not None) and (i.index > 10)
+            i.s_index for i in FATable if (i.s_index is not None) and (i.index > 10)
         ]
-
+        summary_stats_frames = []
         for act_type in ["primary", "secondary"]:
             for i in fa_sel_dict[act_type]["all"]:
                 fa_info = FATable[i]
                 fa_sel_dict[act_type]["fa_quadrant"].append(fa_info.quadrant)
-                fa_sel_dict[act_type]["fa_orientation"].append(
-                    fa_info.orientation
-                )
+                fa_sel_dict[act_type]["fa_orientation"].append(fa_info.orientation)
 
             fa_idx = fa_sel_dict[act_type]["all"]
-            following_error_frame = self.compute_following_error_summary_stats(
-                following_error_frame, fa_idx, "all", act_type
+            summary_stats_frames.append(
+                self.compute_following_error_summary_stats(
+                    following_error_frame, fa_idx, "all", act_type
+                )
             )
 
-        for quadrant in [1, 2, 3, 4]:
-            fa_idx = [
-                i
-                for i, q in zip(
-                    fa_sel_dict[act_type]["all"],
-                    fa_sel_dict[act_type]["fa_quadrant"],
+            for quadrant in [1, 2, 3, 4]:
+                fa_idx = [
+                    i
+                    for i, q in zip(
+                        fa_sel_dict[act_type]["all"],
+                        fa_sel_dict[act_type]["fa_quadrant"],
+                    )
+                    if q == quadrant
+                ]
+                summary_stats_frames.append(
+                    self.compute_following_error_summary_stats(
+                        following_error_frame, fa_idx, f"quadrant_{quadrant}", act_type
+                    )
                 )
-                if q == quadrant
-            ]
-            following_error_frame = self.compute_following_error_summary_stats(
-                following_error_frame, fa_idx, f"quadrant_{quadrant}", act_type
+            fao_list = np.unique(
+                [
+                    FAOrientation(i).name
+                    for i in fa_sel_dict[act_type]["fa_orientation"]
+                    if i > 0
+                ]
             )
-        fao_list = [
-            FAOrientation(i).name
-            for i in fa_sel_dict[act_type]["fa_orientation"]
-            if i > 0
-        ]
-        for orientation in fao_list:
-            fa_idx = [
-                i
-                for i, o in zip(
-                    fa_sel_dict[act_type]["all"],
-                    fa_sel_dict[act_type]["fa_orientation"],
-                )
-                if o == FAOrientation[orientation].value
-            ]
-            following_error_frame = self.compute_following_error_summary_stats(
-                following_error_frame,
-                fa_idx,
-                f"orientation_{orientation}",
-                act_type,
-            )
+            for orientation in fao_list:
+                fa_idx = [
+                    i
+                    for i, o in zip(
+                        fa_sel_dict[act_type]["all"],
+                        fa_sel_dict[act_type]["fa_orientation"],
+                    )
+                    if o == FAOrientation[orientation].value
+                ]
 
+                summary_stats_frames.append(
+                    self.compute_following_error_summary_stats(
+                        following_error_frame,
+                        fa_idx,
+                        f"orientation_{orientation}",
+                        act_type,
+                    )
+                )
+        following_error_frame = pd.concat(
+            [following_error_frame.copy()] + summary_stats_frames, axis=1
+        )
         return following_error_frame
 
     def compute_following_error_summary_stats(
@@ -199,46 +199,37 @@ class M1M3Query:
         act_type: str,
     ) -> pd.DataFrame:
         if act_type == "primary":
-            cols = [
-                f"{act_type}CylinderFollowingError" + str(i)
-                for i in hp_idx_list
-            ]
+            cols = [f"{act_type}CylinderFollowingError" + str(i) for i in hp_idx_list]
         if act_type == "secondary":
-            cols = [
-                f"{act_type}CylinderFollowingError" + str(i)
-                for i in hp_idx_list
-            ]
-
-        following_error_frame[f"{col_key}_{act_type}_max_val"] = (
+            cols = [f"{act_type}CylinderFollowingError" + str(i) for i in hp_idx_list]
+        following_error_dict = {}
+        following_error_dict[f"{col_key}_{act_type}_max_val"] = (
             following_error_frame[cols].max(axis=1).values
         )
         # min
-        following_error_frame[f"{col_key}_{act_type}_min_val"] = (
+        following_error_dict[f"{col_key}_{act_type}_min_val"] = (
             following_error_frame[cols].min(axis=1).values
         )
+        # abs max
+        following_error_dict[f"{col_key}_{act_type}_absmax_val"] = (
+            following_error_frame[cols].abs().max(axis=1).values
+        )
         # median
-        following_error_frame[f"{col_key}_{act_type}_median_val"] = (
+        following_error_dict[f"{col_key}_{act_type}_median_val"] = (
             following_error_frame[cols].median(axis=1).values
         )
-        following_error_frame[f"{col_key}_{act_type}_std_val"] = (
+        # std
+        following_error_dict[f"{col_key}_{act_type}_std_val"] = (
             following_error_frame[cols].std(axis=1).values
         )
         # confidence interval
-        following_error_frame[f"{col_key}_{act_type}_q1_val"] = (
+        following_error_dict[f"{col_key}_{act_type}_q1_val"] = (
             following_error_frame[cols].quantile(0.16, axis=1).values
         )
-        following_error_frame[f"{col_key}_{act_type}_q3_val"] = (
+        following_error_dict[f"{col_key}_{act_type}_q3_val"] = (
             following_error_frame[cols].quantile(0.84, axis=1).values
         )
-        # std
-        following_error_frame[f"{act_type}_std_val"] = (
-            following_error_frame.filter(
-                like=f"{act_type}CylinderFollowingError", axis=1
-            )
-            .std(axis=1)
-            .values
-        )
-        return following_error_frame
+        return pd.DataFrame(following_error_dict, index=following_error_frame.index)
 
     async def query_dataset(self) -> pd.DataFrame:
         """
@@ -288,10 +279,7 @@ class M1M3Query:
         }
 
         # Query datasets
-        queries = {
-            key: self.query_efd_data(**cfg)
-            for key, cfg in query_config.items()
-        }
+        queries = {key: self.query_efd_data(**cfg) for key, cfg in query_config.items()}
         queries["fa_following_errors"] = (
             await self.query_force_actuator_following_error_dataset()
         )
@@ -408,101 +396,189 @@ ax_label_dict = {
 }
 
 
-class SlewPlotter:
-    def __init__(
-        self,
-        stats_frame,
-        query_dict,
-        query_key,
-        day_obs,
-        col_key,
-        exclude_list=[],
-        block="T227",
-        block_info="",
-        out_dir="./plots/",
-    ):
-        self.stats_frame = stats_frame
-        self.query_dict = query_dict
-        self.query_key = query_key
-        self.day_obs = day_obs
-        self.col_key = col_key
-        self.exclude_list = exclude_list
-        self.block = block
-        self.block_info = block_info
-        self.out_dir = out_dir
+def create_color_dict(values, cmap_name="viridis"):
+    """
+    Create a color dictionary from a list of values using a colormap.
 
-    def _generate_plot(
+    Parameters
+    ----------
+    values : list
+        A list of values to assign colors.
+    cmap_name : str, optional
+        The name of the Matplotlib colormap to use. Default is "viridis".
+
+    Returns
+    -------
+    dict
+        A dictionary where keys are values from the list and values are colors from the colormap.
+    """
+    # Get the colormap
+    cmap = plt.get_cmap(cmap_name)
+    if (len(values) > 10) | (cmap_name != "tab10"):
+        # Normalize the values to the range [0, 1]
+        norm = plt.Normalize(vmin=0, vmax=len(values) - 1)
+        # Assign a color to each value
+        color_dict = {value: cmap(norm(i)) for i, value in enumerate(values)}
+    else:
+        color_dict = {value: cmap(i) for i, value in enumerate(values)}
+    return color_dict
+
+
+class SlewPlotter:
+    """
+    Class for plotting slew data.
+    """
+
+    def __init__(self, plot_dir="./plots/"):
+        """
+        Parameters:
+            plot_dir (str): Directory to save plots.
+            If None, plots are not saved.
+        """
+        self.plot_dir = plot_dir
+
+    def single_test_plot(
         self,
-        time_selector,
-        x_label,
-        file_suffix,
-        t_limit,
-        plot_fa_following=False,
+        col_key,
+        stats_frame,
+        hp_forces_df,
+        fa_following_errors_df,
+        time_align,
+        duration,
+        block="T293",
+        block_info="",
+        xmin=None,
+        xmax=None,
+        day_obs=None,
     ):
+        """
+        Plot a single slew based on the provided parameters.
+
+        Parameters:
+        col_key (str): Column key for the data to plot.
+        dynamic_test_info_dict (dict): Dict with dynamic test info.
+        dynamic_test_data_dict (dict): Dict with dynamic test data.
+        time_align (str): Time alignment for the plot ("start" or "stop").
+        duration (int): Duration for the plot.
+        xmin (float): Minimum x-axis value.
+        xmax (float): Maximum x-axis value.
+        block (str): Block identifier.
+        block_info (str): Block information.
+        day_obs (str): Observation day.
+        plot_fa_following (bool): Whether to plot following errors.
+
+        Returns:
+        matplotlib.figure.Figure: The generated plot figure.
+        """
+        if day_obs is None:
+            day_obs = np.unique(stats_frame["day_obs"])[0]
+
+        if time_align == "start":
+            x_label = "time since slew start [s]"
+            file_suffix = "slew_start"
+        elif time_align == "stop":
+            x_label = "time before slew stop [s]"
+            file_suffix = "slew_stop"
+        else:
+            print(f"bad time align {time_align}")
+
         plt.rcParams["axes.labelsize"] = 12
         fig, axs = plt.subplots(
             3, 3, dpi=125, figsize=(12, 10), sharex=True, sharey=True
         )
         axs = axs.flatten()
-        max_val = 200
+        max_val = 10
 
         for ax_val in range(9):
             ax = axs[ax_val]
-            slew_sel = self.stats_frame["state"] == int(ax_map_dict[ax_val])
-            for seq_num in self.stats_frame["seq_num"][slew_sel].values:
-                if seq_num in self.exclude_list:
-                    continue
-                ydata = self.query_dict[seq_num][self.query_key][self.col_key]
-                t0 = Time(
-                    ydata.index[0]
-                    if time_selector == "start"
-                    else ydata.index[-1]
-                )
+            if ax_val == 4:
+                ax.axis("off")
+                continue
+            slew_sel = stats_frame["state"] == int(ax_map_dict[ax_val])
+            for seq_num in stats_frame["seq_num"][slew_sel].values:
+                if col_key in hp_forces_df.columns:
+                    plot_frame = hp_forces_df
+                if col_key in fa_following_errors_df.columns:
+                    plot_frame = fa_following_errors_df
+                row_sel = plot_frame["seq_num"] == seq_num
+                ydata = plot_frame.loc[row_sel, [col_key]].copy()
+                ydata.index = plot_frame["time"][row_sel]
+
+                t0 = Time(ydata.index[0] if time_align == "start" else ydata.index[-1])
                 times = Time(ydata.index) - t0
                 time_sel = (
-                    times < t_limit * u.second
-                    if time_selector == "start"
-                    else times > t_limit * u.second
+                    times < duration * u.second
+                    if time_align == "start"
+                    else times > duration * u.second
                 )
                 times = times[time_sel]
                 ydata = ydata[time_sel]
+                if len(ydata) == 0:
+                    continue
+                label = f"{seq_num}"
 
-                if plot_fa_following:
-                    median = ydata
-                    q1 = self.query_dict[seq_num][self.query_key][
-                        self.col_key.replace("_median", "_q1")
-                    ][time_sel]
-                    q3 = self.query_dict[seq_num][self.query_key][
-                        self.col_key.replace("_median", "_q3")
-                    ][time_sel]
-                    ax.plot(times.sec, median, label=f"{seq_num}")
+                if "median" in col_key:
+                    median = ydata.values
+                    q1 = plot_frame.loc[
+                        row_sel, [col_key.replace("_median", "_q1")]
+                    ].values.flatten()[time_sel]
+
+                    q3 = plot_frame.loc[
+                        row_sel, [col_key.replace("_median", "_q3")]
+                    ].values.flatten()[time_sel]
+
+                    ax.plot(times.sec, median, label=label)
                     ax.fill_between(times.sec, q1, q3, alpha=0.3)
+                    ax.plot(times.sec, q1, ls="dashed", alpha=0.3)
+                    ax.plot(times.sec, q3, ls="dashed", alpha=0.3)
+
                     max_val = max(
                         max_val,
                         np.max(abs(median)),
                         np.max(abs(q1)),
                         np.max(abs(q3)),
                     )
+                elif "_max" in col_key:
+                    # if plotting max also plot min
+                    y2data = plot_frame.loc[
+                        row_sel, [col_key.replace("_max", "_min")]
+                    ].values.flatten()[time_sel]
+                    ax.plot(times.sec, ydata, label=label)
+                    ax.plot(times.sec, y2data, label=label)
+
+                    max_val = max(
+                        max_val,
+                        np.max(abs(ydata)),
+                        np.max(abs(y2data)),
+                    )
                 else:
-                    ax.plot(times.sec, ydata, label=f"{seq_num}")
+                    ax.plot(times.sec, ydata, label=label)
                     max_val = max(max_val, np.max(abs(ydata)))
 
                 ax.set(**ax_label_dict[ax_val])
-            (
-                ax.set_xlim(0, t_limit)
-                if time_selector == "start"
-                else ax.set_xlim(t_limit, 0)
-            )
+            if xmin is None and xmax is None:
+                (
+                    ax.set_xlim(0, duration)
+                    if time_align == "start"
+                    else ax.set_xlim(duration, 0)
+                )
+            else:
+                ax.set_xlim(xmin, xmax)
 
             ax.tick_params(direction="in")
 
             if ax_val == 4:
                 ax.axis("off")
             else:
-                ax.legend(facecolor="none", edgecolor="none", title="seq_num")
+                handles, _ = ax.get_legend_handles_labels()
+                if handles:
+                    ax.legend(facecolor="none", edgecolor="none", title="seq_num")
         for ax in axs:
-            max_val = max_val * 1.1
-            ax.set_ylim(-max_val, max_val)
+            if "absmax" in col_key:
+                ax.set_ylim(0, max_val * 1.1)
+            else:
+                ax.set_ylim(-max_val * 1.1, max_val * 1.1)
+
         fig.text(
             0.5,
             0.04,
@@ -511,57 +587,220 @@ class SlewPlotter:
             va="center",
             fontsize=16,
         )  # x-label
+
+        col_label = (
+            col_key.replace("_max_val", "max/min").replace("_val", "").replace("_", " ")
+        )
+        if ("primary" in col_label) or ("secondary" in col_label):
+            col_label = "FA following error " + col_label
+
         fig.text(
             0.04,
             0.5,
-            self.col_key,
+            col_label,
             ha="center",
             va="center",
             rotation="vertical",
             fontsize=16,
         )  # y-label
         plt.suptitle(
-            f"{self.col_key}\n{self.day_obs} - {file_suffix}\nBLOCK-{self.block}: {self.block_info} ",
+            f"dynamic test: '{col_label}'\n{day_obs} - {file_suffix}\nBLOCK-{block}: {block_info} ",
             y=0.96,
         )
         plt.subplots_adjust(hspace=0.02, wspace=0.02)
-        plt.savefig(
-            self.out_dir
-            + f"{self.day_obs}_{self.col_key}_{self.block}_{file_suffix}.png"
-        )
-        plt.close()
+        if self.plot_dir:
+            plt.savefig(
+                self.plot_dir + f"{day_obs}_{col_key}_{block}_{file_suffix}.png"
+            )
+            plt.close()
         return fig
 
-    def make_slew_start_plot(self, tmax=3.2):
-        return self._generate_plot(
-            "start", "Time after slew start [s]", "slew_start", tmax
+    def multi_test_plot(
+        self,
+        col_key,
+        dynamic_test_info_dict,
+        dynamic_test_data_dict,
+        color_dict,
+        time_align="start",
+        duration=2,
+        xmin=None,
+        xmax=None,
+    ):
+        plt.rcParams["axes.labelsize"] = 12
+        fig, axs = plt.subplots(
+            3, 3, dpi=125, figsize=(12, 10), sharex=True, sharey=True
+        )
+        axs = axs.flatten()
+        max_val = 10
+        exclude_list = []
+        duration = duration
+        time_align = time_align
+        if time_align == "stop":
+            duration *= -1
+        for ax_val in range(9):
+            ax = axs[ax_val]
+            if ax_val == 4:
+                ax.axis("off")
+                continue
+            for key in dynamic_test_data_dict.keys():
+                stats_frame = dynamic_test_data_dict[key]["stats_frame"]
+                hp_forces_df = dynamic_test_data_dict[key]["hp_forces_df"]
+                fa_following_errors_df = dynamic_test_data_dict[key][
+                    "fa_following_errors_df"
+                ]
+                slew_sel = stats_frame["state"] == int(ax_map_dict[ax_val])
+                for seq_num in stats_frame["seq_num"][slew_sel].values:
+                    if seq_num in exclude_list:
+                        continue
+                    if col_key in hp_forces_df.columns:
+                        plot_frame = hp_forces_df
+                    if col_key in fa_following_errors_df.columns:
+                        plot_frame = fa_following_errors_df
+                    row_sel = plot_frame["seq_num"] == seq_num
+                    ydata = plot_frame.loc[row_sel, [col_key]].copy()
+                    ydata.index = plot_frame["time"][row_sel]
+
+                    t0 = Time(
+                        ydata.index[0] if time_align == "start" else ydata.index[-1]
+                    )
+                    times = Time(ydata.index) - t0
+                    time_sel = (
+                        times < duration * u.second
+                        if time_align == "start"
+                        else times > duration * u.second
+                    )
+                    times = times[time_sel]
+                    ydata = ydata[time_sel]
+
+                    label = (
+                        dynamic_test_info_dict[key]["block_info"]
+                        + " "
+                        + str(np.unique(stats_frame["day_obs"])[0])
+                    )
+
+                    if "median" in col_key:
+                        median = ydata.values
+                        q1 = plot_frame.loc[
+                            row_sel, [col_key.replace("_median", "_q1")]
+                        ].values.flatten()[time_sel]
+
+                        q3 = plot_frame.loc[
+                            row_sel, [col_key.replace("_median", "_q3")]
+                        ].values.flatten()[time_sel]
+
+                        ax.plot(times.sec, median, label=label, c=color_dict[key])
+                        ax.fill_between(
+                            times.sec, q1, q3, alpha=0.3, color=color_dict[key]
+                        )
+                        ax.plot(times.sec, q1, ls="dashed", alpha=0.3)
+                        ax.plot(times.sec, q3, ls="dashed", alpha=0.3)
+
+                        max_val = max(
+                            max_val,
+                            np.max(abs(median)),
+                            np.max(abs(q1)),
+                            np.max(abs(q3)),
+                        )
+                    elif "_max" in col_key:
+                        # if plotting max also plot min
+                        y2data = plot_frame.loc[
+                            row_sel, [col_key.replace("_max", "_min")]
+                        ].values.flatten()[time_sel]
+                        ax.plot(times.sec, ydata, label=label, c=color_dict[key])
+                        ax.plot(times.sec, y2data, label=label, c=color_dict[key])
+                        max_val = max(
+                            max_val,
+                            np.max(abs(ydata)),
+                            np.max(abs(y2data)),
+                        )
+                    else:
+                        ax.plot(times.sec, ydata, label=label, c=color_dict[key])
+                        max_val = max(max_val, np.max(abs(ydata)))
+
+                ax.set(**ax_label_dict[ax_val])
+            if xmin is None and xmax is None:
+                (
+                    ax.set_xlim(0, duration)
+                    if time_align == "start"
+                    else ax.set_xlim(duration, 0)
+                )
+            else:
+                ax.set_xlim(xmin, xmax)
+            ax.tick_params(direction="in")
+
+            # else:
+            #     ax.legend(facecolor="none", edgecolor="none", title="seq_num")
+        handles, labels = axs[1].get_legend_handles_labels()
+        unique_labels = dict(sorted(zip(labels, handles), key=lambda pair: pair[0]))
+        axs[4].legend(
+            unique_labels.values(), unique_labels.keys(), title="%speed settings"
         )
 
-    def make_slew_stop_plot(self, tmin=-3.2):
-        return self._generate_plot(
-            "stop", "Time before slew stops [s]", "slew_stop", tmin
-        )
+        for ax in axs:
+            if "absmax" in col_key:
+                ax.set_ylim(0, max_val * 1.1)
+            else:
+                ax.set_ylim(-max_val * 1.1, max_val * 1.1)
 
-    def make_fa_following_slew_start_plot(self, tmax=3.2):
-        return self._generate_plot(
-            "start",
-            "Time after slew start [s]",
-            "fa_following_slew_start",
-            tmax,
-            plot_fa_following=True,
-        )
+        if time_align == "start":
+            x_label = "time since slew start [s]"
+            file_suffix = "slew_start"
+        elif time_align == "stop":
+            x_label = "time before slew stop [s]"
+            file_suffix = "slew_stop"
+        else:
+            print(f"bad time align {time_align}")
 
-    def make_fa_following_slew_stop_plot(self, tmin=-3.2):
-        return self._generate_plot(
-            "stop",
-            "Time before slew stops [s]",
-            "fa_following_slew_stop",
-            tmin,
-            plot_fa_following=True,
+        fig.text(
+            0.5,
+            0.04,
+            x_label,
+            ha="center",
+            va="center",
+            fontsize=16,
+        )  # x-label
+
+        col_label = (
+            col_key.replace("_max_val", "max/min").replace("_val", "").replace("_", " ")
         )
+        if ("primary" in col_label) or ("secondary" in col_label):
+            col_label = "FA following error " + col_label
+        fig.text(
+            0.04,
+            0.5,
+            col_label,
+            ha="center",
+            va="center",
+            rotation="vertical",
+            fontsize=16,
+        )  # y-label
+        plt.suptitle(
+            f"dynamic test compare: '{col_label}'\nslew {time_align} aligned",
+            y=0.96,
+            fontsize=20,
+        )
+        plt.subplots_adjust(hspace=0.02, wspace=0.02)
+        if self.plot_dir:
+            plt.savefig(
+                self.plot_dir + f"dynamic_test_compare_{col_key}_{file_suffix}.png"
+            )
+            plt.close()
+        return fig
 
 
 def compute_stats_frame(query_dict, day_obs, block, block_info):
+    """
+    Compute stats for the given query dictionary.
+
+    Parameters:
+    query_dict (dict): Dictionary with query results.
+    day_obs (str): Observation day.
+    block (str): Block identifier.
+    block_info (str): Block information.
+
+    Returns:
+    pd.DataFrame: DataFrame with computed stats.
+    """
     stats_dict = {
         key: []
         for key in [
@@ -582,15 +821,12 @@ def compute_stats_frame(query_dict, day_obs, block, block_info):
     for seq_num in query_dict.keys():
         stats_dict["seq_num"].append(seq_num)
         for axis in ["az", "el"]:
-            vals = query_dict[seq_num][f"tma_{axis}"][
-                f"{axis}_actual_position"
-            ].values
+            vals = query_dict[seq_num][f"tma_{axis}"][f"{axis}_actual_position"].values
             stats_dict[f"{axis}_start"].append(vals[0])
             stats_dict[f"{axis}_end"].append(vals[-1])
             stats_dict[f"{axis}_distance"].append((vals[-1] - vals[0]))
         total_distance = np.sqrt(
-            stats_dict["az_distance"][-1] ** 2
-            + stats_dict["el_distance"][-1] ** 2
+            stats_dict["az_distance"][-1] ** 2 + stats_dict["el_distance"][-1] ** 2
         )
         stats_dict["total_distance"].append(total_distance)
         stats_dict["max_hp_force"].append(
@@ -607,14 +843,10 @@ def compute_stats_frame(query_dict, day_obs, block, block_info):
         )
 
         stats_dict["max_fa_following_error"].append(
-            query_dict[seq_num]["fa_following_errors"][
-                "all_primary_max_val"
-            ].max()
+            query_dict[seq_num]["fa_following_errors"]["all_primary_max_val"].max()
         )
         stats_dict["min_fa_following_error"].append(
-            query_dict[seq_num]["fa_following_errors"][
-                "all_primary_min_val"
-            ].min()
+            query_dict[seq_num]["fa_following_errors"]["all_primary_min_val"].min()
         )
     stats_frame = pd.DataFrame(stats_dict)
     stats_frame["day_obs"] = day_obs
@@ -625,90 +857,126 @@ def compute_stats_frame(query_dict, day_obs, block, block_info):
     return stats_frame
 
 
-async def main():
+def load_config(config_file=None, **kwargs):
     """
-    Main function to load the configuration file, query telemetry data,
-    and generate slew start and stop plots.
+    Load config from a YAML file and/or keyword arguments.
 
-    Command-line Arguments
-    ----------------------
-    config_file : `str`
-        Path to the YAML configuration file.
+    Parameters:
+    config_file (str): Path to the YAML config file.
+    **kwargs: Additional config parameters.
 
-    Example config:
-    begin_seq_num: 35
-    end_seq_num: 50
-    day_obs: 20241128
-    block_info: "20% GGRR"
-    block: "T293"
-    out_dir: "./plots/20241128_T293_1/"
-    tmax: 3.2
-    tmin: -3.2
+    Returns:
+    dict: Configuration dictionary.
     """
-    parser = argparse.ArgumentParser(
-        description="Load configuration and run analysis."
-    )
-    parser.add_argument(
-        "config_file",
-        type=str,
-        help="Path to the YAML configuration file.",
-    )
-    args = parser.parse_args()
+    # Define default values
+    default_config = {
+        "begin_seq_num": None,
+        "end_seq_num": None,
+        "begin_time": None,
+        "end_time": None,
+        "day_obs": None,
+        "block_info": None,
+        "block": None,
+        "tmax": None,
+        "tmin": None,
+        "exclude_list": [],
+        "data_dir": "./data/",
+        "plot_dir": "./plots/",
+        "save_data": True,
+        "make_plots": True,
+        "hp_col_keys": [],  # would like to specify measuredForce, f, or m and have it populate
+        "act_groups": [],
+        "act_types": ["primary", "secondary"],
+    }
+    # set hp_col_keys
+    default_config["hp_col_keys"] += [f"measuredForce{i}" for i in range(HP_COUNT)]
+    default_config["hp_col_keys"] += [f"f{i}" for i in "xyz"]
+    default_config["hp_col_keys"] += [f"m{i}" for i in "xyz"]
 
-    if not EfdClient:
-        raise RuntimeError("EFD client is not available.")
+    default_config["act_groups"] += ["all", "quadrant", "orientation"]
 
-    # Load configuration from YAML
-    config_file = args.config_file
-    if not os.path.exists(config_file):
-        raise FileNotFoundError(
-            f"Configuration file '{config_file}' not found."
-        )
+    # Load config from file if specified
+    if config_file:
+        with open(config_file, "r") as file:
+            file_config = yaml.safe_load(file)
+        default_config.update(file_config)
 
-    with open(config_file, "r") as file:
-        config = yaml.safe_load(file)
+    # Override with any provided keyword arguments
+    default_config.update(kwargs)
+    if default_config["plot_dir"]:
+        os.makedirs(default_config["plot_dir"], exist_ok=True)
+    if default_config["data_dir"]:
+        os.makedirs(default_config["data_dir"], exist_ok=True)
 
-    begin_seq_num = config.get("begin_seq_num", None)
-    end_seq_num = config.get("end_seq_num", None)
-    begin_time = config.get("begin_time", None)
-    end_time = config.get("end_time", None)
-    day_obs = config.get("day_obs")
-    block_info = config.get("block_info")
-    block = config.get("block")
-    out_dir = config.get("out_dir")
-    tmax = config.get("tmax")
-    tmin = config.get("tmin")
-    exclude_list = config.get("exclude_list", [])
-    data_dir = config.get("data_dir", "./data/")
+    act_groups = []
 
-    os.makedirs(out_dir, exist_ok=True)
-    os.makedirs(data_dir, exist_ok=True)
-
-    hp_col_keys = [f"measuredForce{i}" for i in range(HP_COUNT)]
-    hp_col_keys += [f"f{i}" for i in "xyz"]
-    hp_col_keys += [f"m{i}" for i in "xyz"]
+    if "all" in default_config["act_groups"]:
+        act_groups += ["all"]
+    if "quadrant" in default_config["act_groups"]:
+        act_groups += [f"quadrant_{i}" for i in range(1, 5)]
+    if "orientation" in default_config["act_groups"]:
+        act_groups += [f"orientation_{FAOrientation(i).name}" for i in range(1, 5)]
+    default_config["act_groups"] = act_groups
 
     fa_col_keys = []
     for act_type in ["primary", "secondary"]:
-        fa_col_keys += [
-            f"{col_key}_{act_type}_max_val" for col_key in ["all"]
-        ]  # , "quadrant", "orientation"]]
-        fa_col_keys += [
-            f"{col_key}_{act_type}_median_val" for col_key in ["all"]
-        ]
-    event_maker = TMAEventMaker()
-    events = event_maker.getEvents(day_obs)
+        for act_group in act_groups:
+            fa_col_keys += [f"{act_group}_{act_type}_max_val"]
+            fa_col_keys += [f"{act_group}_{act_type}_min_val"]
+            fa_col_keys += [f"{act_group}_{act_type}_median_val"]
+
+    default_config["fa_col_keys"] = fa_col_keys
+
+    return default_config
+
+
+async def run_single_dynamic_test(
+    begin_time=None,
+    end_time=None,
+    begin_seq_num=None,
+    end_seq_num=None,
+    day_obs=None,
+    block_info=None,
+    block=None,
+    plot_dir=None,
+    tmax=3.2,
+    tmin=-3.2,
+    data_dir="./data/",
+    save_data=True,
+    make_plots=True,
+    hp_col_keys=[],
+    fa_col_keys=[],
+    **kwargs,
+):
+    """
+    Run a single dynamic test based on the provided config.
+
+    Parameters:
+    **config: Configuration parameters.
+
+    Returns:
+    tuple: A tuple with stats_frame, hp_forces_df, and fa_following_errors_df.
+    """
+    if not EfdClient:
+        raise RuntimeError("EFD client is not available.")
 
     if begin_time is not None and end_time is not None:
-
         begin_time = Time(begin_time, format="iso")
         end_time = Time(end_time, format="iso")
-
+        if day_obs is None:
+            day_obs_begin = getDayObsForTime(begin_time)
+            day_obs_end = getDayObsForTime(end_time)
+            if day_obs_begin != day_obs_end:
+                raise ValueError(
+                    "begin_time and end_time span multiple day_obs values."
+                )
+            day_obs = day_obs_begin
+        event_maker = TMAEventMaker()
+        events = event_maker.getEvents(day_obs)
         slews = [
             e
             for e in events
-            if (e.begin.unix >= begin_time.unix)
-            & (e.end.unix <= end_time.unix)
+            if (e.begin.unix >= begin_time.unix) & (e.end.unix <= end_time.unix)
         ]
         print(
             (
@@ -717,11 +985,14 @@ async def main():
             )
         )
     else:
-
+        if day_obs is None:
+            raise ValueError(
+                "day_obs must be specified if begin_time and end_time are not."
+            )
+        event_maker = TMAEventMaker()
+        events = event_maker.getEvents(day_obs)
         slews = [
-            e
-            for e in events
-            if (e.seqNum >= begin_seq_num) & (e.seqNum <= end_seq_num)
+            e for e in events if (e.seqNum >= begin_seq_num) & (e.seqNum <= end_seq_num)
         ]
         print(
             (
@@ -737,7 +1008,9 @@ async def main():
     fa_following_errors_list = []
     for slew in np.asarray(slews):
         seq_num = slew.seqNum
-
+        # with warnings.catch_warnings():
+        #     # this warning should be safe to ignore
+        #     warnings.simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
         query_result = await M1M3Query(
             slew, event_maker.client, outer_pad=0
         ).query_dataset()
@@ -761,68 +1034,97 @@ async def main():
     fa_following_errors_df = fa_following_errors_df.reset_index()
     fa_following_errors_df.rename(columns={"index": "time"}, inplace=True)
 
-    hp_forces_csv_path = os.path.join(
-        data_dir,
-        config_file.split("/")[-1].replace(".yaml", "_hp_efd_frame.csv"),
-    )
-
-    fa_following_error_csv_path = os.path.join(
-        data_dir,
-        config_file.split("/")[-1].replace(".yaml", "_fa_efd_frame.csv"),
-    )
-
-    hp_forces_df.to_csv(hp_forces_csv_path)
-    fa_following_errors_df.to_csv(fa_following_error_csv_path)
-
-    print(
-        f"Saved concatenated forces data to {hp_forces_csv_path} & fa_efd_frame.csv"
-    )
-
     stats_frame = compute_stats_frame(query_dict, day_obs, block, block_info)
-    stats_csv_path = os.path.join(
-        data_dir,
-        config_file.split("/")[-1].replace(".yaml", "_stats_frame.csv"),
-    )
-    stats_frame.to_csv(stats_csv_path)
 
-    for col_key in hp_col_keys:
-        query_key = "hp_measured_forces"
-        sp = SlewPlotter(
-            stats_frame=stats_frame,
-            query_dict=query_dict,
-            query_key=query_key,
-            day_obs=day_obs,
-            col_key=col_key,
-            exclude_list=exclude_list,
-            block=block,
-            block_info=block_info,
-            out_dir=out_dir,
+    if save_data:
+        # save data frames
+        hp_forces_csv_path = os.path.join(
+            data_dir,
+            config_file.split("/")[-1].replace(".yaml", "_hp_efd_frame.csv"),
         )
-        sp.make_slew_start_plot(tmax=tmax)
-        sp.make_slew_stop_plot(tmin=tmin)
 
-    for col_key in fa_col_keys:
-        query_key = "fa_following_errors"
-        sp = SlewPlotter(
-            stats_frame=stats_frame,
-            query_dict=query_dict,
-            query_key=query_key,
-            day_obs=day_obs,
-            col_key=col_key,
-            exclude_list=exclude_list,
-            block=block,
-            block_info=block_info,
-            out_dir=out_dir,
+        fa_following_error_csv_path = os.path.join(
+            data_dir,
+            config_file.split("/")[-1].replace(".yaml", "_fa_efd_frame.csv"),
         )
-        if "median" in col_key:
-            sp.make_fa_following_slew_start_plot(tmax=tmax)
-            sp.make_fa_following_slew_stop_plot(tmin=tmin)
-        else:
-            sp.make_slew_start_plot(tmax=tmax)
-            sp.make_slew_stop_plot(tmin=tmin)
+
+        hp_forces_df.to_csv(hp_forces_csv_path)
+        fa_following_errors_df.to_csv(fa_following_error_csv_path)
+
+        stats_csv_path = os.path.join(
+            data_dir,
+            config_file.split("/")[-1].replace(".yaml", "_stats_frame.csv"),
+        )
+        stats_frame.to_csv(stats_csv_path)
+
+        print(
+            f"Saved concatenated forces data to {hp_forces_csv_path}, fa_efd_frame.csv & stats_frame.csv"
+        )
+
+    if make_plots:
+        sp = SlewPlotter(plot_dir=plot_dir)
+        for col_key in hp_col_keys + fa_col_keys:
+            sp.single_test_plot(
+                col_key=col_key,
+                stats_frame=stats_frame,
+                hp_forces_df=hp_forces_df,
+                fa_following_errors_df=fa_following_errors_df,
+                time_align="start",
+                duration=tmax,
+                block="T293",
+                block_info="",
+                xmin=None,
+                xmax=None,
+                day_obs=None,
+            )
+            sp.single_test_plot(
+                col_key=col_key,
+                stats_frame=stats_frame,
+                hp_forces_df=hp_forces_df,
+                fa_following_errors_df=fa_following_errors_df,
+                time_align="stop",
+                duration=abs(tmin),
+                block="T293",
+                block_info="",
+                xmin=None,
+                xmax=None,
+                day_obs=None,
+            )
+
+    return stats_frame, hp_forces_df, fa_following_errors_df
 
 
 if __name__ == "__main__":
+    """
+    example call:
+        python dynamic_test_analysis.py ./config/20241201_T293_1.yaml
+    """
     import asyncio
 
-    asyncio.run(main())
+    config_file = "./config/20241201_T293_1.yaml"
+    parser = argparse.ArgumentParser(description="Load configuration and run analysis.")
+    parser.add_argument(
+        "config_file",
+        type=str,
+        help="Path to the YAML configuration file.",
+    )
+    parser.add_argument(
+        "--begin_time",
+        type=str,
+        help="iso begin time",
+    )
+    parser.add_argument(
+        "--end_time",
+        type=str,
+        help="iso end time",
+    )
+
+    args = parser.parse_args()
+    if args.config_file:
+        config_file = args.config_file
+        config = load_config(config_file=config_file, save_data=False, make_plots=True)
+    elif args.begin_time and args.end_time:
+        config = load_config(begin_time=args.begin_time, end_time=args.end_time)
+    stats_frame, hp_forces_df, fa_following_errors_df = asyncio.run(
+        run_single_dynamic_test(**config)
+    )
