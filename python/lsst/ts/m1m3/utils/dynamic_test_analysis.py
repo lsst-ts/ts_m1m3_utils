@@ -1,6 +1,5 @@
 import argparse
 import os
-from datetime import timedelta
 from enum import IntFlag
 
 import matplotlib.pyplot as plt
@@ -17,7 +16,6 @@ from lsst.ts.xml.tables.m1m3 import (
     FAOrientation,
 )
 from lsst.ts.m1m3.utils.force_actuator_forces import ForceActuatorForces
-import warnings
 
 
 HAS_EFD_CLIENT = True
@@ -1098,6 +1096,7 @@ if __name__ == "__main__":
     """
     example call:
         python dynamic_test_analysis.py ./config/20241201_T293_1.yaml
+        python dynamic_test_analysis.py --begin_time 2024-12-01T00:00:00 --end_time 2024-12-01T00:00:00
     """
     import asyncio
 

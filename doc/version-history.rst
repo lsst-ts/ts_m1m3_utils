@@ -4,6 +4,11 @@
 Version History
 ===============
 
+v0.3.0
+------
+
+* script to plot hardpoint forces/moments and FA following errors during dynamic tests.
+
 v0.2.0
 ------
 
