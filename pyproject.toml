@@ -17,11 +17,13 @@ dependencies = [
   "ts_xml",
   "tqdm",
   "lsst_efd_client",
+  "PyWavelets",
 ]
 
 [project.scripts]
 m1m3-bump-tests-times = "lsst.ts.m1m3.utils.m1m3_bump_tests_times:run"
 m1m3-aav = "lsst.ts.m1m3.utils.acceleration_and_velocity:run"
+m1m3-oscillations = "lsst.ts.m1m3.utils.identify_oscillations_during_slew_wt:main"
 
 [tool.setuptools.dynamic]
 version = { attr = "setuptools_scm.get_version" }

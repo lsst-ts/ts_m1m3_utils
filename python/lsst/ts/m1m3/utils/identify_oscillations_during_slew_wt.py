@@ -20,7 +20,6 @@ from lsst.summit.utils.tmaUtils import TMAEvent, TMAEventMaker
 from lsst.ts.xml.tables.m1m3 import HP_COUNT
 from scipy.signal import find_peaks
 
-
 HAS_EFD_CLIENT = True
 try:
     from lsst_efd_client import EfdClient
@@ -79,8 +78,7 @@ class M1M3EFDQuery:
                 "topic": "lsst.sal.MTM1M3.hardpointActuatorData",
                 "columns": self.measured_forces_topics,
                 "err_msg": (
-                    "No hard-point data found for event"
-                    f"{evt.seqNum} on {evt.dayObs}"
+                    "No hard-point data found for event" f"{evt.seqNum} on {evt.dayObs}"
                 ),
             },
             "tma_az": {
@@ -125,9 +123,8 @@ class M1M3EFDQuery:
 
         # Query datasets
         queries = {
-            key: self.query_efd_data(**cfg)
-            for key, cfg in query_config.items()
-        }  # type: ignore
+            key: self.query_efd_data(**cfg) for key, cfg in query_config.items()  # type: ignore
+        }
         queries["slew"] = self.event
         # Merge datasets
         # df = self.merge_datasets(queries)
@@ -210,7 +207,9 @@ class M1M3IdentifyOscillations:
         save_results (bool): Whether to save results as CSV.
     """
 
-    def __init__(self, day_obs, peak_height=3000, save_results=True) -> None:
+    def __init__(
+        self, day_obs: int, peak_height: float = 3000, save_results: bool = True
+    ) -> None:
         self.day_obs = day_obs
         self.eventMaker = TMAEventMaker()
         self.events = self.eventMaker.getEvents(self.day_obs)
@@ -218,7 +217,7 @@ class M1M3IdentifyOscillations:
         self.peak_height = peak_height
         self.save_results = save_results
 
-    def run(self):
+    def run(self) -> None | pd.DataFrame:
         """
         Run oscillation analysis on all slews for the observation day.
 
@@ -260,8 +259,14 @@ class M1M3IdentifyOscillations:
         return peaks_df
 
     def identify_peaks_in_wt(
-        self, coeffs, freqs, times, data, peak_height=1000, time_window=1
-    ):
+        self,
+        coeffs: np.ndarray,
+        freqs: np.ndarray,
+        times: np.ndarray,
+        data: np.ndarray,
+        peak_height: float = 1000,
+        time_window: int = 1,
+    ) -> None | pd.DataFrame:
         """
         Identify peaks in the wavelet transform of telemetry data.
 
@@ -270,7 +275,7 @@ class M1M3IdentifyOscillations:
             freqs (np.ndarray): Frequencies corresponding to the coefficients.
             times (np.ndarray): Time indices for the data.
             data (np.ndarray): Original telemetry data.
-            peak_height (int): Minimum height for peak detection.
+            peak_height (float): Minimum height for peak detection.
             time_window (int): Time tolerance for grouping peaks (seconds).
 
         Returns:
@@ -279,9 +284,7 @@ class M1M3IdentifyOscillations:
         """
 
         # Compute Wavelet Power Spectrum
-        power = (
-            np.abs(coeffs) ** 2
-        )  # Power is the square of the wavelet coefficients
+        power = np.abs(coeffs) ** 2  # Power is the square of the wavelet coefficients
 
         # Detect peaks in the wavelet power spectrum
         peaks_time = []
@@ -294,17 +297,13 @@ class M1M3IdentifyOscillations:
                     (
                         times[peak],
                         freqs[freq_idx],
-                        properties["peak_heights"][
-                            np.where(peaks == peak)[0][0]
-                        ],
+                        properties["peak_heights"][np.where(peaks == peak)[0][0]],
                     )
                 )
         if len(peaks_time) == 0:
             return None
         # Convert peaks to a DataFrame for easier processing
-        peaks_df = pd.DataFrame(
-            peaks_time, columns=["time", "frequency", "power"]
-        )
+        peaks_df = pd.DataFrame(peaks_time, columns=["time", "frequency", "power"])
 
         # Sort by time and group nearby peaks
         time_tolerance = timedelta(
@@ -314,10 +313,7 @@ class M1M3IdentifyOscillations:
         grouped_peaks = []
         current_group = [peaks_df.iloc[0]]
         for i in range(1, len(peaks_df)):
-            if (
-                peaks_df.iloc[i]["time"] - current_group[-1]["time"]
-                <= time_tolerance
-            ):
+            if peaks_df.iloc[i]["time"] - current_group[-1]["time"] <= time_tolerance:
                 current_group.append(peaks_df.iloc[i])
             else:
                 # Keep only the peak with the maximum power in the group
@@ -334,14 +330,14 @@ class M1M3IdentifyOscillations:
         grouped_peaks_df = pd.DataFrame(grouped_peaks)
         # remove peaks where data is near zero before
         # and near +/- 3k after (breakaway)
-        grouped_peaks_df = self.remove_breakaway(
-            grouped_peaks_df, data, time_window=3
-        )
+        grouped_peaks_df = self.remove_breakaway(grouped_peaks_df, data, time_window=3)
         if len(grouped_peaks_df) == 0:
             return None
         return grouped_peaks_df
 
-    def group_across_hp(self, peaks_df, time_window=1):
+    def group_across_hp(
+        self, peaks_df: pd.DataFrame, time_window: float = 1
+    ) -> pd.DataFrame:
         """
         Group peaks across nearby times and retain the one with the
         maximum power.
@@ -363,31 +359,22 @@ class M1M3IdentifyOscillations:
         current_group = [peaks_df.iloc[0]]
 
         for i in range(1, len(peaks_df)):
-            if (
-                peaks_df.iloc[i]["time"] - current_group[-1]["time"]
-                <= time_tolerance
-            ):
+            if peaks_df.iloc[i]["time"] - current_group[-1]["time"] <= time_tolerance:
                 current_group.append(peaks_df.iloc[i])
             else:
                 current_group_df = pd.DataFrame(current_group)
                 max_peak = current_group_df.loc[
                     current_group_df["power"].idxmax()
                 ].copy()
-                max_peak["count"] = len(
-                    current_group
-                )  # Count of peaks in the group
+                max_peak["count"] = len(current_group)  # Count of peaks in the group
                 grouped_peaks.append(max_peak)
                 current_group = [peaks_df.iloc[i]]
 
         # Add the last group
         if current_group:
             current_group_df = pd.DataFrame(current_group)
-            max_peak = current_group_df.loc[
-                current_group_df["power"].idxmax()
-            ].copy()
-            max_peak["count"] = len(
-                current_group
-            )  # Count of peaks in the last group
+            max_peak = current_group_df.loc[current_group_df["power"].idxmax()].copy()
+            max_peak["count"] = len(current_group)  # Count of peaks in the last group
             grouped_peaks.append(max_peak)
 
         # Convert grouped peaks back to a DataFrame
@@ -396,12 +383,12 @@ class M1M3IdentifyOscillations:
 
     def run_single_slew(
         self,
-        seq_num,
-        day_obs,
-        query_result,
-        peak_height=1000,
-        show_plots=False,
-    ):
+        seq_num: int,
+        day_obs: int,
+        query_result: dict,
+        peak_height: float = 1000,
+        show_plots: bool = False,
+    ) -> None | pd.DataFrame:
         """
         Analyze oscillations for a single slew.
 
@@ -444,7 +431,7 @@ class M1M3IdentifyOscillations:
 
         return peaks_df
 
-    def add_telemetry(self, peaks_df, query_result):
+    def add_telemetry(self, peaks_df: pd.DataFrame, query_result: dict) -> pd.DataFrame:
         """
         Add telemetry data to the detected peaks dataframe.
 
@@ -462,7 +449,7 @@ class M1M3IdentifyOscillations:
                 f"{mt_ax}_actual_velocity",
                 f"{mt_ax}_actual_torque",
             ]
-        telem_dict = {key: [] for key in cols}
+        telem_dict: dict = {key: [] for key in cols}
 
         for i, row in peaks_df.iterrows():
             t0 = Time(row["time"], scale="utc").datetime64
@@ -482,27 +469,29 @@ class M1M3IdentifyOscillations:
         )
         return peaks_df
 
-    def remove_breakaway(self, peaks_df, data, time_window=3):
+    def remove_breakaway(
+        self, peaks_df: pd.DataFrame, data: pd.Series, time_window: float = 3
+    ) -> pd.DataFrame:
         """
         Remove breakaway peaks from the dataset.
 
         Parameters:
             peaks_df (pd.DataFrame): Dataframe of detected peaks.
             data (pd.Series): Original telemetry data.
-            time_window (int): Time window for breakaway detection (seconds).
+            time_window (float): Time window for breakaway detection (seconds).
 
         Returns:
             pd.DataFrame: Filtered dataframe without breakaway peaks.
         """
         # returns false if there is a breakaway
-        time_window = timedelta(seconds=time_window)
+        td = timedelta(seconds=time_window)
         breakaway_sel = []
         for peak_time in peaks_df["time"]:
             sel_before = (data.index.values < peak_time) & (
-                data.index.values > peak_time - time_window
+                data.index.values > peak_time - td
             )
             sel_after = (data.index.values > peak_time) & (
-                data.index.values < peak_time + time_window
+                data.index.values < peak_time + td
             )
             median_before = np.median(data[sel_before])
             median_after = np.median(data[sel_after])
@@ -515,8 +504,15 @@ class M1M3IdentifyOscillations:
         return peaks_df[breakaway_sel].reset_index(drop=True)
 
     def plot_results_wt(
-        self, coeffs, times, freqs, grouped_peaks_df, hp, seq_num, day_obs
-    ):
+        self,
+        coeffs: np.ndarray,
+        times: np.ndarray,
+        freqs: np.ndarray,
+        grouped_peaks_df: pd.DataFrame,
+        hp: int,
+        seq_num: int,
+        day_obs: int,
+    ) -> None:
         """
         Plot wavelet transform results and detected peaks.
 
@@ -557,11 +553,11 @@ class M1M3IdentifyOscillations:
 
     @staticmethod
     def compute_wt(
-        data,
-        sampling_period=0.02,
-        frequency_scales=np.arange(5, 20, 0.2),
-        wavelet="cmor1.5-1.0",
-    ):
+        data: np.ndarray,
+        sampling_period: float = 0.02,
+        frequency_scales: np.ndarray = np.arange(5, 20, 0.2),
+        wavelet: str = "cmor1.5-1.0",
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Compute the wavelet transform of the telemetry data.
 
@@ -577,9 +573,7 @@ class M1M3IdentifyOscillations:
             and corresponding frequencies.
         """
 
-        scales = pywt.frequency2scale(
-            wavelet, frequency_scales * sampling_period
-        )
+        scales = pywt.frequency2scale(wavelet, frequency_scales * sampling_period)
         coeffs, freqs = pywt.cwt(
             data,
             scales=scales,
@@ -589,7 +583,7 @@ class M1M3IdentifyOscillations:
         return coeffs, freqs
 
 
-def main():
+def main() -> None:
     """
     Main function to analyze M1M3 slew telemetry.
 
@@ -609,12 +603,8 @@ def main():
         ValueError: If invalid arguments are provided.
     """
 
-    parser = argparse.ArgumentParser(
-        description="Analyze M1M3 slew telemetry."
-    )
-    parser.add_argument(
-        "--day_obs", type=int, help="Single day to process (YYYYMMDD)."
-    )
+    parser = argparse.ArgumentParser(description="Analyze M1M3 slew telemetry.")
+    parser.add_argument("--day_obs", type=int, help="Single day to process (YYYYMMDD).")
     parser.add_argument(
         "--begin_day_obs", type=int, help="begin of day_obs range (YYYYMMDD)."
     )
@@ -660,7 +650,3 @@ def main():
             continue
         analysis = M1M3IdentifyOscillations(day_obs, args.peak_height)
         analysis.run()
-
-
-if __name__ == "__main__":
-    main()
