@@ -13,9 +13,10 @@ dependencies = [
   "astropy",
   "numpy",
   "pandas",
+  "PySide6",
   "scipy",
-  "ts_xml",
   "tqdm",
+  "ts_xml",
   "lsst_efd_client",
 ]
 
