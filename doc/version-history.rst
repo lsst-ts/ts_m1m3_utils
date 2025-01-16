@@ -4,6 +4,11 @@
 Version History
 ===============
 
+v0.2.1
+------
+
+* fix conda and pip dependencies
+
 v0.2.0
 ------
 

@@ -12,13 +12,11 @@ build:
   script: {{PYTHON}} -m pip install --no-deps --ignore-installed .
   entry_points:
     - m1m3-bump-tests-times = lsst.ts.m1m3.utils.m1m3_bump_tests_times:run
+    - m1m3-aav = lsst.ts.m1m3.utils.acceleration_and_velocity:run
 
 test:
   requires:
-    - ts-conda-build ==0.4
-    - astropy
-    - ts-xml
-    - lsst-efd-client
+    - pytest
   source_files:
     - python
     - tests
@@ -36,5 +34,10 @@ requirements:
   run:
     - python {{python}}
     - astropy
+    - numpy
+    - pandas
+    - PySide6
+    - scipy
+    - tqdm
     - ts-xml
     - lsst-efd-client
