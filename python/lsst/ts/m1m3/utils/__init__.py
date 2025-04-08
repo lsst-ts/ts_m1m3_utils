@@ -21,6 +21,7 @@
 
 from .acceleration_and_velocity import AccelerationAndVelocity
 from .acceleration_and_velocity_fitter import AccelerationAndVelocityFitter
+from .bump_test_runner import BumpTestKind, BumpTestRunner, ForceActuatorBumpTest
 from .bump_test_times import BumpTestTimes
 from .force_actuator_forces import ForceActuatorForces
 from .force_calculator import ForceCalculator
