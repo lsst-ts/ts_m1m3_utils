@@ -61,7 +61,7 @@ class BumpTestTimes:
 
         # Find the test names
         primary_bump = f"primaryTest{fa.index}"
-        query_fields = "time, actuatorId, " + primary_bump
+        query_fields = "time, " + primary_bump
         if fa.actuator_type == FAType.DAA:
             secondary_bump = f"secondaryTest{fa.s_index}"
             query_fields += ", " + secondary_bump
@@ -71,8 +71,7 @@ class BumpTestTimes:
         bumps = await self.client.influx_client.query(
             f"SELECT {query_fields} "
             'FROM "efd"."autogen"."lsst.sal.MTM1M3.logevent_forceActuatorBumpTestStatus" '
-            f"WHERE time >= '{start.isot}+00:00' AND time <= '{end.isot}+00:00' "
-            f"AND actuatorId = {actuator_id}"
+            f"WHERE time >= '{start.isot}+00:00' AND time <= '{end.isot}+00:00'"
         )
 
         # Now find the separate tests
