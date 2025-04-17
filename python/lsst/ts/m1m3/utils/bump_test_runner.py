@@ -25,7 +25,7 @@ import typing
 from dataclasses import dataclass
 from enum import StrEnum
 
-from lsst.ts.salobj import BaseMsgType
+from lsst.ts.salobj import BaseMsgType, Remote
 from lsst.ts.xml.enums.MTM1M3 import BumpTest
 from lsst.ts.xml.tables.m1m3 import (
     FATABLE_XFA,
@@ -61,6 +61,44 @@ class BumpTestsList:
     def __init__(self, actuators: list[ForceActuatorBumpTest] | None = None):
         self._tests = [] if actuators is None else actuators
 
+    @staticmethod
+    def all_tests(
+        m1m3: Remote, skip: list[int] | None = None
+    ) -> list[ForceActuatorBumpTest]:
+        """Return all tests for all enabled actuators minus actuators to skip.
+
+        Parameters
+        ----------
+        m1m3 : Remote
+            Salobj remote to retrieve a list of enabled force actuatos.
+        skip : list[int], optional
+            If not specified, no actuator will be skipped.
+
+        Returns
+        -------
+        tests : list[ForceActuatorBumpTest]
+            List of ForceActuatorBumpTest objects for actuators meeting the
+            conditions (are enabled and aren't in the skipped list).
+        """
+        if skip is None:
+            skip = []
+
+        enabled = m1m3.evt_enabledForceActuators.get()
+        if enabled is None:
+            raise RuntimeError(
+                "Cannot retrieve list of enabledForceActuators event. Exiting."
+            )
+
+        tests = []
+        for fa in FATable:
+            if enabled.forceActuatorEnabled[fa.index] and fa.actuator_id not in skip:
+                tests.append(ForceActuatorBumpTest(fa, BumpTestKind.AXIS_Z))
+                if fa.x_index is not None:
+                    tests.append(ForceActuatorBumpTest(fa, BumpTestKind.AXIS_X))
+                if fa.y_index is not None:
+                    tests.append(ForceActuatorBumpTest(fa, BumpTestKind.AXIS_Y))
+        return tests
+
     def __iter__(self) -> typing.Iterator[ForceActuatorBumpTest]:
         return self._tests.__iter__()
 
@@ -68,14 +106,36 @@ class BumpTestsList:
         return len(self._tests)
 
     def empty(self) -> bool:
+        """Returns true if the set is empty.
+
+        Returns
+        -------
+        empty : bool
+            True if the set is empty.
+        """
         return len(self._tests) == 0
 
     def append(self, test: ForceActuatorBumpTest) -> None:
+        """Add new test to the set.
+
+        Parameters
+        ----------
+        test : ForceActuatorBumpTest
+            Test to add.
+        """
         self._tests.append(test)
 
-    def contains(self, actuator: ForceActuatorData, primary: bool) -> bool:
+    def contains(
+        self, actuator: ForceActuatorData, primary: bool | None = None
+    ) -> bool:
+        if primary is None:
+            return actuator.actuator_id in [
+                test.actuator.actuator_id for test in self._tests
+            ]
         return actuator.actuator_id in [
-            test.actuator.actuator_id for test in self._tests if test.is_primary() == primary
+            test.actuator.actuator_id
+            for test in self._tests
+            if test.is_primary() == primary
         ]
 
     def remove(self, actuator_id: int, primary: bool) -> ForceActuatorBumpTest | None:
@@ -101,7 +161,7 @@ class BumpTestsList:
         self._tests = []
 
     def distance(self, fa: ForceActuatorData) -> float:
-        """Caclulates minimal distance of the given force actuator to the set.
+        """Calculates minimal distance of the given force actuator to the set.
 
         Parameters
         ----------
@@ -133,6 +193,9 @@ class BumpTestRunner:
     method returns None if there aren't any test to execute, signalling thegq
     scheduler finished all jobs. After that, the wait_finish method shall be
     called to wait for all running tests finishing.
+
+    Please see m1m3-do-bump-tests source code for example how to use the
+    runner.
 
     Attributes
     ----------
