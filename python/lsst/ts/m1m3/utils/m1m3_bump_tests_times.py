@@ -155,7 +155,7 @@ async def run_loop() -> None:
         for bump in secondary:
             await print_bump(bump[0], bump[1])
 
-    await client.influx_client.close()
+    await client._influx_client.close()
 
 
 def run() -> None:

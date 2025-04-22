@@ -4,6 +4,11 @@
 Version History
 ===============
 
+v0.3.0
+------
+
+* BumpTest Runner - executes parallel bump tests
+
 v0.2.1
 ------
 
