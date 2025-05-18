@@ -68,7 +68,7 @@ class BumpTestTimes:
         else:
             secondary_bump = None
 
-        bumps = await self.client.influx_client.query(
+        bumps = await self.client._influx_client.query(
             f"SELECT {query_fields} "
             'FROM "efd"."autogen"."lsst.sal.MTM1M3.logevent_forceActuatorBumpTestStatus" '
             f"WHERE time >= '{start.isot}+00:00' AND time <= '{end.isot}+00:00'"

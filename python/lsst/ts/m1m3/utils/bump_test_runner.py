@@ -236,7 +236,7 @@ class BumpTestRunner:
         ----------
         min_distance : float
             Minimal distance (in meters) of the selected force actuator to all
-            rgqgqunning force actuators.
+            running force actuators.
         timeout : float
             Timeout (in seconds) to wait will next force actuator can be
             tested.
