@@ -29,23 +29,23 @@ from astropy.time import Time, TimeDelta
 from lsst.ts.xml.tables.m1m3 import FATable, force_actuator_from_id
 from lsst_efd_client import EfdClient
 
+from .duration_time import DurationTime
 
-def parse_arguments() -> argparse.Namespace:
+
+def parse_arguments(now: Time) -> argparse.Namespace:
     """Parse command line arguments."""
-
-    now = Time.now()
 
     parser = argparse.ArgumentParser(description="Queries bump test status.")
     parser.add_argument(
         "start_time",
-        type=Time,
+        type=DurationTime(now),
         default=now - TimeDelta(30, format="sec"),
         nargs="?",
         help="Start time in a valid format: 'YYYY-MM-DD HH:MM:SSZ'",
     )
     parser.add_argument(
         "end_time",
-        type=Time,
+        type=DurationTime(now),
         default=now,
         nargs="?",
         help="End time in a valid format: 'YYYY-MM-DD HH:MM:SSZ'",
@@ -77,7 +77,9 @@ def parse_arguments() -> argparse.Namespace:
 
 
 async def run_loop() -> None:
-    args = parse_arguments()
+    now = Time.now()
+
+    args = parse_arguments(now)
 
     level = logging.INFO
 
@@ -89,13 +91,15 @@ async def run_loop() -> None:
 
     logging.basicConfig(format="%(asctime)s %(message)s", level=level)
 
+    start_t, end_t = DurationTime.pair(args.start_time, args.end_time)
+
     client = EfdClient(args.efd)
     logging.info(
-        "Query following errors - %s to %s.", str(args.start_time), str(args.end_time)
+        "Quering following errors - %s to %s.", start_t.utc.isot, end_t.utc.isot
     )
 
     forces = await client.select_time_series(
-        "lsst.sal.MTM1M3.forceActuatorData", "*", args.start_time, args.end_time
+        "lsst.sal.MTM1M3.forceActuatorData", "*", start_t, end_t
     )
 
     tested = []
