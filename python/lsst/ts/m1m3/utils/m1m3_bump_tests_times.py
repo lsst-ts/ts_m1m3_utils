@@ -28,7 +28,7 @@ from urllib.parse import urlencode, urlunparse
 
 from astropy.time import Time, TimeDelta
 from lsst.ts.m1m3.utils import BumpTestTimes, ForceActuatorForces
-from lsst.ts.xml.tables.m1m3 import ForceActuatorData, force_actuator_from_id
+from lsst.ts.xml.tables.m1m3 import FATable, ForceActuatorData, force_actuator_from_id
 from lsst_efd_client import EfdClient
 
 
@@ -54,8 +54,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "actuators",
-        default=[],
-        action="append",
+        nargs="*",
         help="Actuators to query. If empty, list all actuators.",
     )
     parser.add_argument(
@@ -92,6 +91,9 @@ async def run_loop() -> None:
     client = EfdClient(args.efd)
 
     btt = BumpTestTimes(client)
+
+    if len(args.actuators) == 0:
+        args.actuators = [fa.actuator_id for fa in FATable]
 
     logging.info(f"Looking for bump test times in {args.start_time} to {args.end_time}")
 

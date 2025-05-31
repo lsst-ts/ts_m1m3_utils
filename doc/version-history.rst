@@ -8,6 +8,8 @@ v0.3.0
 ------
 
 * BumpTest Runner - executes parallel bump tests
+* m1m3-fe-outliers
+* DurationTime class
 
 v0.2.1
 ------
