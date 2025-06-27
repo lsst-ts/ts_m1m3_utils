@@ -26,7 +26,9 @@ import asyncio
 import logging
 from urllib.parse import urlencode, urlunparse
 
+import sty
 from astropy.time import Time, TimeDelta
+from lsst.ts.xml.enums.MTM1M3 import BumpTest as BumpTestStatus
 from lsst.ts.xml.tables.m1m3 import FATable, force_actuator_from_id
 from lsst_efd_client import EfdClient
 
@@ -109,10 +111,16 @@ async def run_loop() -> None:
         async def print_bump(test: BumpTest) -> None:
             params = {
                 "refresh": "Paused",
-                "tempVars[x_index]": test.fa.x_index,
-                "tempVars[y_index]": test.fa.y_index,
-                "tempVars[z_index]": test.fa.z_index,
-                "tempVars[s_index]": test.fa.s_index,
+                "tempVars[x_index]": (
+                    0 if test.fa.x_index is None else test.fa.actuator_id
+                ),
+                "tempVars[y_index]": (
+                    0 if test.fa.y_index is None else test.fa.actuator_id
+                ),
+                "tempVars[z_index]": test.fa.actuator_id,
+                "tempVars[s_index]": (
+                    0 if test.fa.s_index is None else test.fa.actuator_id
+                ),
                 "lower": test.start_time.isot + "Z",
                 "upper": test.end_time.isot + "Z",
             }
@@ -134,7 +142,14 @@ async def run_loop() -> None:
                     "",
                 )
             )
-            print(test.start_time.isot, test.end_time.isot, test.result, url)
+            print(
+                sty.fg.green if test.result == BumpTestStatus.PASSED else sty.fg.red,
+                test.start_time.isot,
+                test.end_time.isot,
+                test.result,
+                sty.fg.rs,
+                url,
+            )
             if args.details:
                 faf = ForceActuatorForces(test.start_time, test.end_time, client)
                 fa_fe = await faf.actuator_following_error(actuator)
@@ -149,13 +164,18 @@ async def run_loop() -> None:
                     f"max {flat_fe.max():.3f} N"
                 )
 
-        print("Primary bump tests - FA ", actuator.actuator_id)
+        print(sty.fg.yellow, "Primary bump tests - FA", actuator.actuator_id, sty.bg.rs)
         async for bump in btt.find_times(actuator, True, start_t, end_t):
             await print_bump(bump)
 
         if actuator.s_index is not None:
-            print("===================")
-            print("Secondary bump tests - FA ", actuator.actuator_id)
+            print(sty.bg.blue, "\u25A9" * 50, sty.bg.rs)
+            print(
+                sty.fg.yellow,
+                "Secondary bump tests - FA",
+                actuator.actuator_id,
+                sty.fg.rs,
+            )
             async for bump in btt.find_times(actuator, False, start_t, end_t):
                 await print_bump(bump)
 
