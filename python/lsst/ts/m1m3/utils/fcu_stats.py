@@ -24,12 +24,13 @@ import asyncio
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
+import pandas as pd
 from astropy import units as u
 from astropy.time import Time, TimeDelta
 from lsst_efd_client import EfdClient
 
 
-def create_url_for_summit_chronograf(t_start, t_end):
+def create_url_for_summit_chronograf(t_start, t_end) -> str:
     """Create a URL for the Summit Chronograf to visualize FCU data."""
     base_url = "https://summit-lsp.lsst.codes/chronograf"
     dashboard = "sources/1/dashboards/390"
@@ -43,7 +44,7 @@ def create_url_for_summit_chronograf(t_start, t_end):
     return url
 
 
-def get_time_window(timestamp: str, delta_t: str):
+def get_time_window(timestamp: str, delta_t: str) -> tuple[Time, Time]:
     """Given a timestamp and a duration string, return (t_start, t_end) as
     astropy Time objects."""
     delta_t_seconds = parse_duration(delta_t)
@@ -189,7 +190,7 @@ def parse_duration(duration: str) -> TimeDelta:
     return TimeDelta(sign * (ret + current) * u.s)
 
 
-def parse_timestamp(timestamp):
+def parse_timestamp(timestamp) -> Time:
     """Parse the timestamp string into an astropy Time object."""
 
     if timestamp.lower() == "now":
@@ -202,7 +203,9 @@ def parse_timestamp(timestamp):
     return timestamp
 
 
-def plot_fcu_temperature(df, fcu_index, t_start, t_end):
+def plot_fcu_temperature(
+    df: pd.DataFrame, fcu_index: int, t_start: Time, t_end: Time
+) -> None:
     """Plot the FCU temperature data from the DataFrame."""
     title = f"FCU{fcu_index} Temperature Data\n From {t_start.iso} to {t_end.iso}"
     fig, ax = plt.subplots(num=1, clear=True)
@@ -303,7 +306,7 @@ async def fcu_quick_analysis(
             plot_fcu_temperature(df, fcu_index, t_start, t_end)
 
 
-async def main():
+async def main() -> None:
     """Main function to run the FCU quick analysis."""
 
     # Parse arguments from the command line
