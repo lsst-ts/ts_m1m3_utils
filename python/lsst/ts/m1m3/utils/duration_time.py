@@ -34,6 +34,7 @@ def parse_duration(duration: str) -> TimeDelta:
 
     Length denominators
     -------------------
+    W : weeks (7 * 86400 seconds)
     D : days (86400 seconds)
     h : hours (3600 seconds)
     m : minutes (60 seconds)
@@ -55,7 +56,15 @@ def parse_duration(duration: str) -> TimeDelta:
     seconds : float
         Number of seconds in string.
     """
-    muls = {"D": 86400, "h": 3600, "m": 60, "s": 1, "u": 0.001, "n": 0.000001}
+    muls = {
+        "W": 604800,
+        "D": 86400,
+        "h": 3600,
+        "m": 60,
+        "s": 1,
+        "u": 0.001,
+        "n": 0.000001,
+    }
     ret: float = 0.0
     current: float = 0.0
     duration = duration.strip()

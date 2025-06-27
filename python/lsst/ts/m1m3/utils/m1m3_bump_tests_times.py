@@ -31,6 +31,8 @@ from lsst.ts.m1m3.utils import BumpTestTimes, ForceActuatorForces
 from lsst.ts.xml.tables.m1m3 import FATable, ForceActuatorData, force_actuator_from_id
 from lsst_efd_client import EfdClient
 
+from .duration_time import DurationTime
+
 
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments."""
@@ -40,14 +42,14 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Queries bump test status.")
     parser.add_argument(
         "start_time",
-        type=Time,
+        type=DurationTime(now),
         default=now - TimeDelta(7, format="jd"),
         nargs="?",
         help="Start time in a valid format: 'YYYY-MM-DD HH:MM:SSZ'",
     )
     parser.add_argument(
         "end_time",
-        type=Time,
+        type=DurationTime(now),
         default=now,
         nargs="?",
         help="End time in a valid format: 'YYYY-MM-DD HH:MM:SSZ'",
@@ -81,6 +83,8 @@ def parse_arguments() -> argparse.Namespace:
 async def run_loop() -> None:
     args = parse_arguments()
 
+    start_t, end_t = DurationTime.pair(args.start_time, args.end_time)
+
     level = logging.INFO
 
     if args.d:
@@ -100,7 +104,7 @@ async def run_loop() -> None:
     for aid in [int(a) for a in args.actuators]:
         actuator = force_actuator_from_id(aid)
         logging.info(f"** Actuator {aid} type: {actuator.actuator_type}")
-        primary, secondary = await btt.find_times(aid, args.start_time, args.end_time)
+        primary, secondary = await btt.find_times(aid, start_t, end_t)
 
         async def print_bump(start: Time, end: Time) -> None:
             def act(index: int | None, actuator: ForceActuatorData) -> int:
