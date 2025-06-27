@@ -65,6 +65,7 @@ class BumpTestTimes:
         primary: bool,
         start: Time = (Time.now() - TimeDelta(7, format="jd")),
         end: Time = Time.now(),
+        start_delta: TimeDelta = TimeDelta(3, format="sec"),
     ) -> AsyncGenerator[BumpTest, None]:
         """Find bump test query times
 
@@ -73,10 +74,14 @@ class BumpTestTimes:
         fa : `ForceActuatorData`
             Force Actuator identification number. Starting with 101, the first
             number identified segment (1-4). The value ranges up to 443.
+        primary : `bool`
+            If true, search primary cylinder (Z) bump tests.
         start: 'Time', optional
             Astropy Time of search start. Defaults to week ago.
-        end: Time
+        end: `Time`
             Astropy Time of search end. Defaults to current time.
+        start_delta : `TimeDelta`, optional
+            Delta to subtract from start of the tests. Defaults to 3 seconds.
 
         Returns
         -------
@@ -90,7 +95,7 @@ class BumpTestTimes:
             f"SELECT time, {status} "
             'FROM "efd"."autogen"."lsst.sal.MTM1M3.logevent_forceActuatorBumpTestStatus" '
             f"WHERE time >= '{start.isot}Z' AND time <= '{end.isot}Z' "
-            f"AND {status} = {BumpTestStatus.TRIGGERED}"
+            f"AND {status} = {BumpTestStatus.TESTINGPOSITIVE}"
         )
         bumps = await self.client._do_query(query)
 
@@ -111,6 +116,7 @@ class BumpTestTimes:
                 f"AND time <= '{end_time.isot}Z' "
                 f"AND {status} >= {BumpTestStatus.PASSED}"
             )
+            start_time -= start_delta
             if len(ends) == 0:
                 yield BumpTest(fa, start_time, None, None)
             else:
