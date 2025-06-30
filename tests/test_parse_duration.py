@@ -20,6 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import argparse
+import math
 import unittest
 
 from astropy.time import Time, TimeDelta
@@ -61,6 +62,23 @@ class ParseDurationTestCase(unittest.TestCase):
         assert (
             DurationTime(Time("1986-04-26T01:23:47.53"))("-10430D5h55m36.53s").isot
             == Time("1957-10-04T19:28:34").isot
+        )
+
+    def test_special_strings(self) -> None:
+        td = DurationTime(Time("1978-01-01T23:59:10"))("now")
+        math.isclose(TimeDelta(Time.now() - td, format="sec").value, 0, abs_tol=1e-5)
+
+        td = DurationTime(Time("1978-01-01T23:59:10"))("yesterday")
+        math.isclose(
+            TimeDelta(Time.now() - td, format="sec").value, 86400, abs_tol=1e-5
+        )
+
+    def test_atomic_time(self) -> None:
+        td = DurationTime(Time("1985-03-04T12:33:44"))("2023-04-01A23:12:12.23")
+        math.isclose(
+            TimeDelta(td - Time("2023-04-01T23:11:35.23"), format="sec").value,
+            0,
+            abs_tol=1e-5,
         )
 
     def test_failures(self) -> None:
