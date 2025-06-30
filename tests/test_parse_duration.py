@@ -1,4 +1,4 @@
-# This file is part of ts_criopy.
+# This file is part of ts_m1m3_utils.
 #
 # Developed for the Rubin Observatory Telescope and Site System.
 # This product includes software developed by the LSST Project

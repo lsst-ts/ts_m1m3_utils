@@ -4,6 +4,11 @@
 Version History
 ===============
 
+v0.3.1
+------
+
+* Improved bump_test_times querying and reporting.
+
 v0.3.0
 ------
 

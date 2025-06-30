@@ -15,6 +15,7 @@ dependencies = [
   "pandas",
   "PySide6",
   "scipy",
+  "sty",
   "tqdm",
   "ts_xml",
   "lsst_efd_client",

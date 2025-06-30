@@ -1,4 +1,4 @@
-# This file is part of M1M3 GUI.
+# This file is part of ts_m1m3_utils.
 #
 # Developed for the LSST Telescope and Site Systems.  This product includes
 # software developed by the LSST Project (https://www.lsst.org).  See the
@@ -18,14 +18,36 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see <https://www.gnu.org/licenses/>.
 
+from dataclasses import dataclass
+from typing import AsyncGenerator
+
 from astropy.time import Time, TimeDelta
-from lsst.ts.xml.tables.m1m3 import FAType, force_actuator_from_id
+from lsst.ts.xml.enums.MTM1M3 import BumpTest as BumpTestStatus
+from lsst.ts.xml.tables.m1m3 import ForceActuatorData
 from lsst_efd_client import EfdClient
+
+
+@dataclass
+class BumpTest:
+    """Represent a single bump test occurence.
+
+    Attributes
+    ----------
+    fa : `ForceActuatorData`
+    start_time : `Time`
+    end_time : `Time`
+    result : `int`
+    """
+
+    fa: ForceActuatorData
+    start_time: Time
+    end_time: Time
+    result: int | None
 
 
 class BumpTestTimes:
     """Returns a set of times for bump tests given the actuator ID and
-    an input timespan
+    a time range.
 
     Parameters
     ----------
@@ -39,70 +61,64 @@ class BumpTestTimes:
 
     async def find_times(
         self,
-        actuator_id: int,
+        fa: ForceActuatorData,
+        primary: bool,
         start: Time = (Time.now() - TimeDelta(7, format="jd")),
         end: Time = Time.now(),
-    ) -> tuple[list[tuple[Time, Time]], list[tuple[Time, Time]]]:
+        start_delta: TimeDelta = TimeDelta(3, format="sec"),
+    ) -> AsyncGenerator[BumpTest, None]:
         """Find bump test query times
-        actuator_id : `int`
+
+        Parameters
+        ----------
+        fa : `ForceActuatorData`
             Force Actuator identification number. Starting with 101, the first
             number identified segment (1-4). The value ranges up to 443.
-
+        primary : `bool`
+            If true, search primary cylinder (Z) bump tests.
         start: 'Time', optional
             Astropy Time of search start. Defaults to week ago.
-
-        end: Time
+        end: `Time`
             Astropy Time of search end. Defaults to current time.
+        start_delta : `TimeDelta`, optional
+            Delta to subtract from start of the tests. Defaults to 3 seconds.
 
-        returns: Two nested list of Time, one for the primary bump and one for
-            the secondary bump [start,end], [start, end]...].
+        Returns
+        -------
+        tests : `[BumpTest]`
+            List of performed bump tests.
         """
-        fa = force_actuator_from_id(actuator_id)
-
         # Find the test names
-        primary_bump = f"primaryTest{fa.index}"
-        query_fields = "time, " + primary_bump
-        if fa.actuator_type == FAType.DAA:
-            secondary_bump = f"secondaryTest{fa.s_index}"
-            query_fields += ", " + secondary_bump
-        else:
-            secondary_bump = None
+        status = f"primaryTest{fa.index}" if primary else f"secondaryTest{fa.s_index}"
 
-        bumps = await self.client.influx_client.query(
-            f"SELECT {query_fields} "
+        query = (
+            f"SELECT time, {status} "
             'FROM "efd"."autogen"."lsst.sal.MTM1M3.logevent_forceActuatorBumpTestStatus" '
-            f"WHERE time >= '{start.isot}+00:00' AND time <= '{end.isot}+00:00'"
+            f"WHERE time >= '{start.isot}Z' AND time <= '{end.isot}Z' "
+            f"AND {status} = {BumpTestStatus.TESTINGPOSITIVE}"
         )
+        bumps = await self.client._do_query(query)
+
+        end_time: Time | None = None
 
         # Now find the separate tests
-        times = bumps.index
-        start_times = []
-        end_times = []
-        for i, time in enumerate(times):
-            if i == 0:
-                start_times.append(time)
+        for time, row in bumps.iterrows():
+            start_time = Time(time)
+            if end_time is not None and start_time < end_time:
                 continue
-            if (time - times[i - 1]) > TimeDelta(60.0, format="sec"):
-                start_times.append(time)
-                end_times.append(times[i - 1])
-        end_times.append(times[-1])
-        # Now use these to find the bump test start and end times
-        primary_times: list[tuple[Time, Time]] = []
-        secondary_times: list[tuple[Time, Time]] = []
-        for start_time, end_time in zip(start_times, end_times):
-            this_bump = bumps[(bumps.index >= start_time) & (bumps.index <= end_time)]
-            try:
-                plot_start = Time(
-                    this_bump[this_bump[primary_bump] == 2].index[0]
-                ) - TimeDelta(1, format="sec")
-                plot_end = plot_start + TimeDelta(14, format="sec")
-                primary_times.append((plot_start, plot_end))
-                if secondary_bump is not None:
-                    plot_start = Time(
-                        this_bump[this_bump[secondary_bump] == 2].index[0]
-                    ) - TimeDelta(1, format="sec")
-                    plot_end = plot_start + TimeDelta(14, format="sec")
-                    secondary_times.append((plot_start, plot_end))
-            except IndexError:
-                continue
-        return primary_times, secondary_times
+
+            end_time = start_time + TimeDelta(60, format="sec")
+
+            ends = await self.client._do_query(
+                f"SELECT time, {status} "
+                'FROM "efd"."autogen"."lsst.sal.MTM1M3.logevent_forceActuatorBumpTestStatus" '
+                f"WHERE time > '{start_time.isot}Z' "
+                f"AND time <= '{end_time.isot}Z' "
+                f"AND {status} >= {BumpTestStatus.PASSED}"
+            )
+            start_time -= start_delta
+            if len(ends) == 0:
+                yield BumpTest(fa, start_time, None, None)
+            else:
+                end_time = Time(ends.index[0])
+                yield BumpTest(fa, start_time, end_time, ends[status].iloc[0])

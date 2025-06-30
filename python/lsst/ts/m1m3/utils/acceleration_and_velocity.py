@@ -1,4 +1,4 @@
-# This file is part of ts_aos_utils.
+# This file is part of ts_m1m3_utils.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
