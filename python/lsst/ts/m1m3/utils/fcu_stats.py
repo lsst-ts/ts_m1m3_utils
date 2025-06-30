@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 # This file is part of ts_m1m3_utils
 #
 # Developed for the LSST Telescope and Site.
@@ -22,17 +20,13 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import argparse
+import asyncio
+
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
-import warnings
-
 from astropy import units as u
 from astropy.time import Time, TimeDelta
-from astropy.time.core import TimeDeltaMissingUnitWarning
-from matplotlib.lines import Line2D
-from IPython.display import HTML
-
-from lsst.summit.utils.efdUtils import getEfdData, makeEfdClient
+from lsst_efd_client import EfdClient
 
 
 def create_url_for_summit_chronograf(t_start, t_end):
@@ -65,7 +59,9 @@ def get_time_window(timestamp: str, delta_t: str):
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments."""
 
-    parser = argparse.ArgumentParser(description="Queries bump test status.")
+    parser = argparse.ArgumentParser(
+        description="Queries M1M3 Thermal System's FCU statistics."
+    )
     parser.add_argument(
         "-rt",
         "--reference_time",
@@ -78,7 +74,9 @@ def parse_arguments() -> argparse.Namespace:
         "--delta_time",
         default="-10s",
         nargs="?",
-        help="Delta time string (e.g., '-10s' for 10 seconds before the reference time). If the value is negative, use an equal sign (e.g., -df=-30s) to avoid confusion with argparse.",
+        help="Delta time string (e.g., '-10s' for 10 seconds before the reference time). "
+        "If the value is negative, use an equal sign (e.g., -df=-30s) to avoid "
+        "confusion with argparse.",
     )
     parser.add_argument(
         "-fcu",
@@ -230,26 +228,14 @@ def plot_fcu_temperature(df, fcu_index, t_start, t_end):
     plt.show()
 
 
-def query_fcu_data(client, fcu_index, t_start, t_end):
-    """Query the EFD for FCU data within the specified time window."""
-    df = getEfdData(
-        client,
-        topic="lsst.sal.MTM1M3TS.thermalData",
-        columns=["timestamp"] + [f"absoluteTemperature{i}" for i in fcu_index],
-        begin=t_start,
-        end=t_end,
-    )
-    return df
-
-
-def fcu_quick_analysis(
-    client,
-    fcu_indexes,
+async def fcu_quick_analysis(
+    client: EfdClient,
+    fcu_indexes: int | list[int],
     timestamp,
     delta_t,
     set_point,
-    plot=True,
-    show_url=True,
+    plot: bool = True,
+    show_url: bool = True,
 ):
     """
     Perform a quick analysis of FCU temperature data.
@@ -274,8 +260,6 @@ def fcu_quick_analysis(
     return_output: bool, optional
         Whether return the output or not. Default is False.
     """
-    warnings.filterwarnings("ignore", category=TimeDeltaMissingUnitWarning)
-
     if isinstance(fcu_indexes, int):
         fcu_indexes = [fcu_indexes]
     elif fcu_indexes is None:
@@ -286,7 +270,12 @@ def fcu_quick_analysis(
     t_start, t_end = get_time_window(timestamp, delta_t)
     print(f"  Time window: {t_start.iso} to {t_end.iso}")
 
-    df = query_fcu_data(client, fcu_indexes, t_start, t_end)
+    df = await client.select_time_series(
+        "lsst.sal.MTM1M3TS.thermalData",
+        ["timestamp"] + [f"absoluteTemperature{i}" for i in fcu_indexes],
+        t_start,
+        t_end,
+    )
     if df.empty:
         print("No data found for the specified time window.")
         return
@@ -324,10 +313,10 @@ async def main():
         print(f"Parsed arguments: {args}\n")
 
     # Create using the EFD client
-    efd_client = makeEfdClient(args.efd)
+    efd_client = EfdClient(args.efd)
 
     # Running analysis
-    fcu_quick_analysis(
+    await fcu_quick_analysis(
         efd_client,
         fcu_indexes=args.fcu_indexes,
         timestamp=args.reference_time,
@@ -341,7 +330,5 @@ async def main():
     await efd_client.influx_client.close()
 
 
-if __name__ == "__main__":
-    import asyncio
-
+def run() -> None:
     asyncio.run(main())
