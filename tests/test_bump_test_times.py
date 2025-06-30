@@ -23,6 +23,7 @@ import unittest
 
 from astropy.time import Time
 from lsst.ts.m1m3.utils import BumpTestTimes
+from lsst.ts.xml.tables.m1m3 import force_actuator_from_id
 from lsst_efd_client import EfdClient
 
 
@@ -32,10 +33,41 @@ class BumpTestTimesTestCase(unittest.IsolatedAsyncioTestCase):
         self.btt = BumpTestTimes(self.client)
 
     async def asyncTearDown(self) -> None:
-        await self.client.influx_client.close()
+        try:
+            await self.client._influx_client.close()
+        except AttributeError:
+            await self.client.influx_client.close()
+
+    async def get_tests(
+        self, actuator_id: int, start_t: Time, end_t: Time
+    ) -> tuple[BumpTestTimes, BumpTestTimes]:
+        fa = force_actuator_from_id(actuator_id)
+        primary = tuple(
+            [
+                tt
+                async for tt in self.btt.find_times(
+                    fa,
+                    True,
+                    Time("2024-09-09 13:28:04"),
+                    Time("2024-09-16 13:28:04"),
+                )
+            ]
+        )
+        secondary = tuple(
+            [
+                tt
+                async for tt in self.btt.find_times(
+                    fa,
+                    False,
+                    Time("2024-09-09 13:28:04"),
+                    Time("2024-09-16 13:28:04"),
+                )
+            ]
+        )
+        return (primary, secondary)
 
     async def test_times_saa(self) -> None:
-        primary, secondary = await self.btt.find_times(
+        primary, secondary = await self.get_tests(
             101, Time("2024-09-09 13:28:04"), Time("2024-09-16 13:28:04")
         )
 
@@ -43,7 +75,7 @@ class BumpTestTimesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(secondary), 0)
 
     async def test_times_daa(self) -> None:
-        primary, secondary = await self.btt.find_times(
+        primary, secondary = await self.get_tests(
             435, Time("2024-09-09 13:28:04"), Time("2024-09-16 13:28:04")
         )
 

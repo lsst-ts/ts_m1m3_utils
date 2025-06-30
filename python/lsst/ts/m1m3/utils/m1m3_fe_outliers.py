@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 # This file is part of ts_m1m3_utils
 #
 # Developed for the LSST Telescope and Site.
