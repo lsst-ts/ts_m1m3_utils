@@ -7,7 +7,6 @@ Version History
 v0.3.1
 ------
 
-<<<<<<< HEAD
 * Improved bump_test_times querying and reporting.
 * Add new script ``fcu_stats.py`` to report FCU statistics
 

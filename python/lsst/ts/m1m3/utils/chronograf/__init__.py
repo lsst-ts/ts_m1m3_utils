@@ -19,4 +19,4 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from .urls import DashboardURL, M1M3_FA
+from .urls import DashboardURL, M1M3FCUStats, M1M3ForceActuatorForces
