@@ -19,13 +19,31 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from astropy.time import Time
 from urllib.parse import urlencode, urlunparse
 
-__all__ = ["DashboardURL", "M1M3_FA"]
+from astropy.time import Time
+from lsst.ts.xml.tables.m1m3 import ForceActuatorData
+
+__all__ = ["DashboardURL", "M1M3FCUStats", "M1M3ForceActuatorForces"]
+
 
 class DashboardURL:
-    def __init__(self, efd: str, **kwargs):
+    """Construct links to given dashboard. Keywords arguments passed to the
+    constructor method serves as pointer to dashboard number. Server addresses
+    are set based on the name of the EFD instance passed to the constructor.
+
+    The expected usage is
+
+    Parameters
+    ----------
+    efd : `str`
+        Name of the EFD connection. Either summit_efd or usfd_efd.
+
+    kwargs : `dict[str, int]`
+        Dashboard number for the EFD/Chronograf instance specified in key.
+    """
+
+    def __init__(self, efd: str, **kwargs: int):
         self.efd = efd
         try:
             self.dashboard = kwargs[efd]
@@ -37,9 +55,9 @@ class DashboardURL:
             return "summit-lsp.lsst.codes"
         if self.efd == "usdf_efd":
             return "usdf-rsp.slac.stanford.edu"
+        raise RuntimeError(f"Unknown EFD name: {self.efd}.")
 
-
-    def url(self, lower: Time, upper: Time, **kwargs) -> str:
+    def url(self, lower: Time, upper: Time, **kwargs: str | int | float) -> str:
         params = {
             "refresh": "Paused",
             "lower": lower.isot + "Z",
@@ -57,6 +75,52 @@ class DashboardURL:
             )
         )
 
-class M1M3_FA(DashboardURL):
+
+class M1M3ForceActuatorForces(DashboardURL):
+    """Generator for the Force Actuator Forces URLs.
+
+    Parameters
+    ----------
+    efd : `str`
+        Name of the EFD instance.
+    """
+
     def __init__(self, efd: str):
-        super().__init__(efd, summit_efd = 199, usdf_efd = 61)
+        super().__init__(efd, summit_efd=199, usdf_efd=61)
+
+    def fa_url(self, lower: Time, upper: Time, fa: ForceActuatorData) -> str:
+        """Generate URL for given actuator, linking to Chronograf with plots
+        containing forces and errors.
+
+        Parameters
+        ----------
+        lower : `Time`
+            Start time.
+        upper : `Time`
+            End time.
+        fa : `ForceActuatorData`
+            Force actuator to plot.
+
+        Returns
+        -------
+        url : `str`
+            URL to Chronograf site containing given Force Actuator Forces
+            plots.
+        """
+
+        def test_index(index: int | None) -> int:
+            return 0 if index is None else fa.actuator_id
+
+        return self.url(
+            lower,
+            upper,
+            x_index=test_index(fa.x_index),
+            y_index=test_index(fa.y_index),
+            s_index=test_index(fa.s_index),
+            z_index=fa.actuator_id,
+        )
+
+
+class M1M3FCUStats(DashboardURL):
+    def __init__(self, efd: str):
+        super().__init__(efd, summit_efd=390, usdf_efd=125)

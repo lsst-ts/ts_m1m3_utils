@@ -179,9 +179,9 @@ class DurationTime(Time):
         try:
             ls = duration_time.lower()
             if ls == "now":
-                return Time.now()
+                return DurationTime(Time.now())
             elif ls == "yesterday":
-                return Time.now() - TimeDelta(1, format="jd")
+                return DurationTime(Time.now() - TimeDelta(1, format="jd"))
             scale = "utc"
             if duration_time.count("A") > 0:
                 duration_time = duration_time.replace("A", "T")
