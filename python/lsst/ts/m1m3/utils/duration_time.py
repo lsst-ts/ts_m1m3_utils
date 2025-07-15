@@ -32,6 +32,11 @@ def parse_duration(duration: str) -> TimeDelta:
 
     Numbers can be suffixed with character, denomination their lengths.
 
+    Special values
+    --------------
+    now : current time
+    yesterday: current time - 24 hours
+
     Length denominators
     -------------------
     W : weeks (7 * 86400 seconds)
@@ -172,6 +177,11 @@ class DurationTime(Time):
             Time either from the string, or self + offset
         """
         try:
+            ls = duration_time.lower()
+            if ls == "now":
+                return DurationTime(Time.now())
+            elif ls == "yesterday":
+                return DurationTime(Time.now() - TimeDelta(1, format="jd"))
             scale = "utc"
             if duration_time.count("A") > 0:
                 duration_time = duration_time.replace("A", "T")

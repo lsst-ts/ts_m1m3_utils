@@ -22,7 +22,6 @@
 import argparse
 import asyncio
 import logging
-from urllib.parse import urlencode, urlunparse
 
 import sty
 from astropy.time import Time, TimeDelta
@@ -31,6 +30,7 @@ from lsst.ts.xml.tables.m1m3 import FATable, force_actuator_from_id
 from lsst_efd_client import EfdClient
 
 from .bump_test_times import BumpTest, BumpTestTimes
+from .chronograf import M1M3ForceActuatorForces
 from .duration_time import DurationTime
 from .force_actuator_forces import ForceActuatorForces
 
@@ -96,50 +96,24 @@ async def run_loop() -> None:
     client = EfdClient(args.efd)
 
     btt = BumpTestTimes(client)
+    m1m3_forces = M1M3ForceActuatorForces(args.efd)
 
     if len(args.actuators) == 0:
         args.actuators = [fa.actuator_id for fa in FATable]
 
-    logging.info(f"Looking for bump test times in {args.start_time} to {args.end_time}")
+    logging.info(f"Looking for bump test times in {start_t} to {end_t}")
 
     for aid in [int(a) for a in args.actuators]:
         actuator = force_actuator_from_id(aid)
         logging.info(f"** Actuator {aid} type: {actuator.actuator_type}")
 
         async def print_bump(test: BumpTest) -> None:
-            params = {
-                "refresh": "Paused",
-                "tempVars[x_index]": (
-                    0 if test.fa.x_index is None else test.fa.actuator_id
-                ),
-                "tempVars[y_index]": (
-                    0 if test.fa.y_index is None else test.fa.actuator_id
-                ),
-                "tempVars[z_index]": test.fa.actuator_id,
-                "tempVars[s_index]": (
-                    0 if test.fa.s_index is None else test.fa.actuator_id
-                ),
-                "lower": test.start_time.isot + "Z",
-                "upper": test.end_time.isot + "Z",
-            }
-            url = urlunparse(
-                (
-                    "https",
-                    (
-                        "summit-lsp.lsst.codes"
-                        if args.efd == "summit_efd"
-                        else "usdf-rsp.slac.stanford.edu"
-                    ),
-                    (
-                        "/chronograf/sources/1/dashboards/199"
-                        if args.efd == "summit_efd"
-                        else "/chronograf/sources/1/dashboards/61"
-                    ),
-                    "",
-                    urlencode(params),
-                    "",
-                )
+            print(
+                test.start_time.isot,
+                test.end_time.isot,
+                test.start_time < test.end_time,
             )
+            url = m1m3_forces.fa_url(test.start_time, test.end_time, test.fa)
             print(
                 sty.fg.green if test.result == BumpTestStatus.PASSED else sty.fg.red,
                 test.start_time.isot,
