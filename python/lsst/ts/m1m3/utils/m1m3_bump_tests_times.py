@@ -67,9 +67,13 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--details",
-        default=False,
         action="store_true",
         help="Print details (average/min/max following errors,..",
+    )
+    parser.add_argument(
+        "--statistics",
+        action="store_true",
+        help="Show statistics (number of failed tests/total tests)",
     )
     parser.add_argument(
         "-d",
