@@ -4,6 +4,11 @@
 Version History
 ===============
 
+v0.3.2
+------
+
+* Added ts-salobj to Conda dependencies.
+
 v0.3.1
 ------
 
