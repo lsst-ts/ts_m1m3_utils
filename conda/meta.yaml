@@ -43,3 +43,4 @@ requirements:
     - tqdm
     - ts-xml
     - lsst-efd-client
+    - ts-salobj {{ salobj_version }}
