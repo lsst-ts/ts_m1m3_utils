@@ -66,9 +66,13 @@ def parse_arguments(now: Time) -> argparse.Namespace:
     )
     parser.add_argument(
         "-d",
-        default=False,
         action="store_true",
         help="Print debug messages",
+    )
+    parser.add_argument(
+        "--boster-active",
+        action="store_true",
+        help="Provide statistics when booster valve was opened.",
     )
 
     return parser.parse_args()
