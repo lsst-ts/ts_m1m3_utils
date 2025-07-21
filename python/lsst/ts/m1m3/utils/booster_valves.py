@@ -80,5 +80,5 @@ class BoosterValves:
                         period_start = time
                 else:
                     if period_start is not None:
-                        yield BoosterValveOpened(period_start, time)
+                        yield BoosterValveOpened(Time(period_start), Time(time))
                         period_start = None
