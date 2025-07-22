@@ -29,6 +29,7 @@ from lsst_efd_client import EfdClient
 
 from .booster_valves import BoosterValves
 from .duration_time import DurationTime
+from .force_actuator_forces import ForceActuatorForces
 
 
 def parse_arguments(now: Time) -> argparse.Namespace:
@@ -86,12 +87,12 @@ async def query_fa_errors(
         "Quering following errors - %s to %s.", start_t.utc.isot, end_t.utc.isot
     )
 
-    forces = await client.select_time_series(
-        "lsst.sal.MTM1M3.forceActuatorData", "*", start_t, end_t
-    )
+    forces = await ForceActuatorForces(client, start_t, end_t).following_errors()
 
     if forces.empty:
-        print("Empty")
+        logging.info(
+            "Following errors not found - %s to %s", start_t.utc.isot, end_t.utc.isot
+        )
         return
 
     tested = []

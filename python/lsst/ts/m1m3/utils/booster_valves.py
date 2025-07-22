@@ -19,6 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
 from dataclasses import dataclass
 from typing import AsyncGenerator
 
@@ -63,9 +64,14 @@ class BoosterValves:
             if (
                 self.cache is None
                 or len(self.cache.index) == 0
-                or self.cache.index[0] < query_start
+                or Time(self.cache.index[0]) < query_start
             ):
                 query_end = min(query_start + self.cache_delta, end)
+                logging.info(
+                    "Quering %s - %s for booster valve activation.",
+                    query_start.isot,
+                    query_end.isot,
+                )
                 self.cache = await self.client.select_time_series(
                     "lsst.sal.MTM1M3.logevent_boosterValveStatus",
                     ["opened"],
