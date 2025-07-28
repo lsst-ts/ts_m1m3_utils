@@ -39,14 +39,13 @@ class ForceActuatorForces:
 
     def __init__(
         self,
+        client: EfdClient | None = None,
         start: Time = None,
         end: Time = None,
-        client: EfdClient | None = None,
     ):
+        self.client = EfdClient("summit_efd") if client is None else client
         self.start = start
         self.end = end
-
-        self.client = EfdClient("summit_efd") if client is None else client
 
     async def actuator_following_error(
         self, actuator: ForceActuatorData
@@ -83,7 +82,7 @@ class ForceActuatorForces:
         following_errors: pd.DataFrame
         """
         fields = [f"primaryCylinderFollowingError{fa.index}" for fa in FATable] + [
-            f"primaryCylinderFollowingError{fa.s_index}"
+            f"secondaryCylinderFollowingError{fa.s_index}"
             for fa in FATable
             if fa.s_index is not None
         ]
@@ -92,7 +91,7 @@ class ForceActuatorForces:
             "lsst.sal.MTM1M3.forceActuatorData", fields, self.start, self.end
         )
 
-    async def actuaror_forces(self, actuator: ForceActuatorData) -> pd.DataFrame:
+    async def actuator_forces(self, actuator: ForceActuatorData) -> pd.DataFrame:
         fields = [f"zForce{actuator.z_index}"]
 
         if actuator.x_index is not None:

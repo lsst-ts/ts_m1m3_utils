@@ -21,6 +21,7 @@
 
 from .acceleration_and_velocity import AccelerationAndVelocity
 from .acceleration_and_velocity_fitter import AccelerationAndVelocityFitter
+from .booster_valves import BoosterValves
 from .bump_test_runner import (
     BumpTestKind,
     BumpTestRunner,

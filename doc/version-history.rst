@@ -4,6 +4,11 @@
 Version History
 ===============
 
+v0.4.0
+------
+
+* BoosterValves class - filter for booster valves activation
+
 v0.3.2
 ------
 
