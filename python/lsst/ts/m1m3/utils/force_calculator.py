@@ -27,12 +27,14 @@ from typing import Any, Generator, Self
 import numpy as np
 import pandas as pd
 import yaml
+from lsst.ts.salobj import BaseMsgType
 from lsst.ts.xml.tables.m1m3 import (
     FATABLE_XFA,
     FATABLE_YFA,
     FATABLE_ZFA,
     HP_COUNT,
     FATable,
+    actuator_id_to_index,
 )
 
 
@@ -202,22 +204,22 @@ class ForceCalculator:
 
         Parameters
         ----------
-        x_forces: list of float, optional
+        x_forces: list[float], optional
             Vector of X forces. Defaults to 0.
-        y_forces: list of float, optional
+        y_forces: list[float], optional
             Vector of Y forces. Defaults to 0.
-        z_forces: list of float, optional
+        z_forces: list[float], optional
             Vector of Z forces. Defautls to 0.
         fas: dict of str to Any, optional
             Force Actuator Settings map. Holds MirrorCenterOfGravity values.
 
         Attributes
         ----------
-        xForces : list of float
+        xForces : list[float]
             Applied X forces. 12 values.
-        yForces : list of float
+        yForces : list[float]
             Applied Y forces. 100 values.
-        zForces : list of float
+        zForces : list[float]
             Applied Z forces. 156 values.
         fx : float
             Total X force, Sum of all X forces.
@@ -235,7 +237,22 @@ class ForceCalculator:
             Moment along Z axis. Calculated from sum of individual
             contribution.
         forceMagnitude : float
-            Total force. Square root (
+            Total force. Square root (sum of power of two fx, fy, and fz).
+
+        global_average_force : float
+            Global average force, forceMagnitude divided by number of
+            actuators. This is used for far neighbor checking.
+
+        near_neighbors_forces : list[diff]
+            Average near neighbors forces. Subtract given actuator force, and
+            divide that with average Z force to calculate ratio of the actuator
+            versus its neighbors. If that ratio is too high, the check fails.
+
+        far_neighbors_magnitudes : list[float]
+            Magnitude of the far neighbor actuators. To calculate far neighbor
+            check factor, compare this magnitude against average force
+            magnitude (obtained by calculating magnitude of vector sum of all
+            force actuator forces, divided by number of force actuators).
         """
 
         xForces = [0.0] * FATABLE_XFA
@@ -248,6 +265,12 @@ class ForceCalculator:
         my = 0.0
         mz = 0.0
         forceMagnitude = 0.0
+
+        global_average_force = 0.0
+
+        near_neighbors_forces = [0.0] * FATABLE_ZFA
+
+        far_neighbors_magnitudes = [0.0] * FATABLE_ZFA
 
         def __init__(
             self,
@@ -335,6 +358,37 @@ class ForceCalculator:
 
             self.forceMagnitude = np.sqrt(self.fx**2 + self.fy**2 + self.fz**2)
 
+        def calculate_near_neighbors_forces(self) -> None:
+            for row in FATable:
+                near_z = 0.0
+                for neighbor_id in row.near_neighbors:
+                    near_z += self.zForces[actuator_id_to_index(neighbor_id)]
+                near_z /= len(row.near_neighbors)
+
+                self.near_neighbors_forces[row.index] = near_z
+
+        def calculate_far_neighbors_magnitudes(self) -> None:
+            self.global_average_force = self.forceMagnitude / FATABLE_ZFA
+
+            for row in FATable:
+                neighbor_fx = 0.0 if row.x_index is None else self.xForces[row.x_index]
+                neighbor_fy = 0.0 if row.y_index is None else self.yForces[row.y_index]
+                neighbor_fz = self.zForces[row.z_index]
+
+                far_neighbors = FATable[row.index].far_neighbors
+
+                for neighbor_id in far_neighbors:
+                    neighbor = FATable[actuator_id_to_index(neighbor_id)]
+                    if neighbor.x_index is not None:
+                        neighbor_fx += self.xForces[neighbor.x_index]
+                    if neighbor.y_index is not None:
+                        neighbor_fy += self.yForces[neighbor.y_index]
+                    neighbor_fz += self.zForces[neighbor.z_index]
+
+                self.far_neighbors_magnitudes[row.index] = np.sqrt(
+                    neighbor_fx**2 + neighbor_fy**2 + neighbor_fz**2
+                ) / (len(far_neighbors) + 1)
+
         def __add__(self, obj2: Any) -> Self:
             """Adds applied forces together.
 
@@ -351,6 +405,22 @@ class ForceCalculator:
                     self.fas,
                 )
             return NotImplemented
+
+    class SALAppliedForces(AppliedForces):
+        def __init__(self, data: BaseMsgType):
+            self.xForces = data.xForces
+            self.fx = data.fx
+            self.mx = data.mx
+
+            self.yForces = data.yForces
+            self.fy = data.fy
+            self.my = data.my
+
+            self.zForces = data.zForces
+            self.fz = data.fz
+            self.mz = data.mz
+
+            self.forceMagnitude = data.forceMagnitude
 
     def __init__(self, config_dir: None | str | pathlib.Path = None):
         self.hardpoint_to_forces_moments = ForceTable()
