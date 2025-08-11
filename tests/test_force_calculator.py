@@ -47,9 +47,9 @@ class ForceCalculatorTestCase(unittest.TestCase):
         assert a.fz == 3 * 156
         assert a.forceMagnitude == np.sqrt(12**2 + 200**2 + (3 * 156) ** 2)
 
-        assert a.mx == 1099.7485905139997
-        assert a.my == 430.0953056310003
-        assert a.mz == -212.0001997679999
+        self.assertAlmostEqual(a.mx, 1099.7485905139997)
+        self.assertAlmostEqual(a.my, 430.0953056310003)
+        self.assertAlmostEqual(a.mz, -212.0001997679999)
 
     def test_hardpoints(self) -> None:
         fam = self.calculator.hardpoint_forces_and_moments(
