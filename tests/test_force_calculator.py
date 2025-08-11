@@ -42,14 +42,14 @@ class ForceCalculatorTestCase(unittest.TestCase):
             [2] * FATABLE_YFA,
             [3] * FATABLE_ZFA,
         )
-        self.assertEqual(a.fx, 12)
-        self.assertEqual(a.fy, 200)
-        self.assertEqual(a.fz, 3 * 156)
-        self.assertEqual(a.forceMagnitude, np.sqrt(12**2 + 200**2 + (3 * 156) ** 2))
+        assert a.fx == 12
+        assert a.fy == 200
+        assert a.fz == 3 * 156
+        assert a.forceMagnitude == np.sqrt(12**2 + 200**2 + (3 * 156) ** 2)
 
-        self.assertEqual(a.mx, 1099.7485905139997)
-        self.assertEqual(a.my, 430.0953056310003)
-        self.assertEqual(a.mz, -212.0001997679999)
+        self.assertAlmostEqual(a.mx, 1099.7485905139997)
+        self.assertAlmostEqual(a.my, 430.0953056310003)
+        self.assertAlmostEqual(a.mz, -212.0001997679999)
 
     def test_hardpoints(self) -> None:
         fam = self.calculator.hardpoint_forces_and_moments(
@@ -139,10 +139,52 @@ class ForceCalculatorTestCase(unittest.TestCase):
         for fa in FATable:
             if fa.quadrant in [1, 2]:
                 if fa.x_index is not None:
-                    self.assertEqual(f.xForces[fa.x_index], 0)
+                    assert f.xForces[fa.x_index] == 0
                 if fa.y_index is not None:
-                    self.assertEqual(f.yForces[fa.y_index], 0)
-                self.assertEqual(f.zForces[fa.index], 0)
+                    assert f.yForces[fa.y_index] == 0
+                assert f.zForces[fa.index] == 0
+
+    def test_near_neighbors(self) -> None:
+        a = self.calculator.get_applied_forces(
+            [5] * FATABLE_XFA, [6] * FATABLE_YFA, [7] * FATABLE_ZFA
+        )
+
+        a.calculate_near_neighbors_forces()
+
+        assert a.near_neighbors_forces[0] == 7
+        assert a.near_neighbors_forces[1] == 7
+
+        a.zForces[11] = 100
+
+        a.calculate_near_neighbors_forces()
+
+        for acc in FATable:
+            ex = {4: 22.5, 5: 38, 10: 22.5, 17: 22.5, 18: 30.25}
+            if acc.index in ex.keys():
+                assert a.near_neighbors_forces[acc.index] == ex[acc.index]
+            else:
+                assert a.near_neighbors_forces[acc.index] == 7
+
+    def test_far_neighbors(self) -> None:
+        a = self.calculator.get_applied_forces(
+            [3] * FATABLE_XFA,
+            [2] * FATABLE_YFA,
+            [1] * FATABLE_ZFA,
+        )
+
+        a.calculate_far_neighbors_magnitudes()
+
+        assert a.far_neighbors_magnitudes[0] == 1.8349016064425483
+        assert a.far_neighbors_magnitudes[1] == 1.8349016064425483
+
+        a.zForces[2] = 100
+
+        a.calculate_far_neighbors_magnitudes()
+
+        assert a.far_neighbors_magnitudes[0] == 8.751669325124857
+        assert a.far_neighbors_magnitudes[1] == 8.751669325124857
+
+        assert a.far_neighbors_magnitudes[100] == 1.7692307692307692
 
 
 if __name__ == "__main__":
