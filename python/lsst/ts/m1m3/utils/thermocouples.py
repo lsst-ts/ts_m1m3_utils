@@ -25,7 +25,7 @@ __all__ = ["get_scanner_data", "remove_cold_junction_gradient", "remove_offsets"
 import numpy as np
 import pandas as pd
 from astropy.time import Time
-from lsst.ts.xml.tables.m1m3 import ThermocoupleTable
+from lsst.ts.xml.tables.m1m3 import Scanner, ThermocoupleTable
 from lsst_efd_client import EfdClient
 
 
@@ -67,17 +67,20 @@ async def get_scanner_data(
 
     scanner_dataframe = pd.DataFrame()
 
+    # bin frequency
+    freq = str(time_bin) + "s"
+
     # Loop through every thermal scanner
-    for scanner in range(4):
+    for scanner in Scanner:
         thermocouples = [
             [thermo.name, thermo.channel % 16, int(thermo.channel / 16) + 1]
             for thermo in ThermocoupleTable
-            if thermo.scanner.value == (114 + scanner)
+            if thermo.scanner.value == scanner
         ]
 
         # Loop through every EFD division in that scanner
         for sensor in range(1, 7):
-            data_query = ""
+            fields: list[str] = []
             query_thermocouples = [
                 [name, channel]
                 for [name, channel, star] in thermocouples
@@ -89,48 +92,41 @@ async def get_scanner_data(
                 # Create or add to an EFD query for
                 # this EFD divisition of this scanner
                 if sensor == 1:
-                    data_query = f'''SELECT ("temperatureItem0") AS "coldJunction{scanner + 114}"'''
+                    fields.append(f'("temperatureItem0") AS "coldJunction{scanner}"')
                 for name, channel in query_thermocouples:
-                    if data_query == "":
-                        data_query = (
-                            f'''SELECT ("temperatureItem{channel}") AS "{name}"'''
-                        )
-                    else:
-                        data_query += f''', ("temperatureItem{channel}") AS "{name}"'''
+                    fields.append(f'("temperatureItem{channel}") AS "{name}"')
 
-                data_query += f""" FROM "efd"."autogen"."lsst.sal.ESS.temperature"
-                    WHERE salIndex = {114 + scanner} AND time > '{start_time.isot}Z'
-                    and time <= '{end_time.isot}Z'
-                    """
-                data = await client.query(data_query)
-
-                if len(scanner_dataframe) == 0:
-                    scanner_dataframe = data
-                else:
-                    # if the query returns results, bin the results
-                    # based on the time_bin
-                    freq = str(time_bin) + "s"
-
-                    data_bin = data.resample(freq).mean()
-                    scanner_bin = scanner_dataframe.resample(freq).mean()
-
-                    # Keep the dataframe where both subdivisions of
-                    # thermal scanners have data
-                    have1 = data_bin.resample(freq).size() > 0
-                    have2 = scanner_bin.resample(freq).size() > 0
-                    valid = have1 & have2  # only bins where both had data
-
-                    scanner_dataframe = pd.concat(
-                        [data_bin[valid], scanner_bin[valid]], axis=1
+                if len(fields) == 0:
+                    raise RuntimeError(
+                        f"No fields available for scanner with index {scanner}."
                     )
 
-    # Remove the cold junction offset if desired
-    if do_remove_cold_junction:
-        scanner_dataframe = remove_cold_junction_gradient(scanner_dataframe)
+                data = await client.select_time_series(
+                    "lsst.sal.ESS.temperature",
+                    fields,
+                    start_time,
+                    end_time,
+                    index=scanner,
+                )
 
-    # Remove the individual thermocouple offset if desired
-    if do_remove_offsets:
-        scanner_dataframe = remove_offsets(scanner_dataframe)
+                if scanner_dataframe.empty:
+                    if not (data.empty):
+                        scanner_dataframe = data.resample(freq).median()
+                elif not (data.empty):
+                    # if the query returns results, bin the results
+                    # based on the time_bin
+                    scanner_dataframe = scanner_dataframe.join(
+                        data.resample(freq).mean()
+                    )
+
+    if not (scanner_dataframe.empty):
+        # Remove the cold junction offset if desired
+        if do_remove_cold_junction:
+            scanner_dataframe = remove_cold_junction_gradient(scanner_dataframe)
+
+        # Remove the individual thermocouple offset if desired
+        if do_remove_offsets:
+            scanner_dataframe = remove_offsets(scanner_dataframe)
 
     return scanner_dataframe
 
@@ -152,7 +148,12 @@ def remove_cold_junction_gradient(data: pd.DataFrame) -> pd.DataFrame:
         junction temperature removed.
     """
     data["coldJunctionMean"] = data[
-        ["coldJunction114", "coldJunction115", "coldJunction116", "coldJunction117"]
+        [
+            f"coldJunction{Scanner.TS_01}",
+            f"coldJunction{Scanner.TS_02}",
+            f"coldJunction{Scanner.TS_03}",
+            f"coldJunction{Scanner.TS_04}",
+        ]
     ].mean(axis=1)
     for column in data.columns:
         for thermocouple in ThermocoupleTable:
