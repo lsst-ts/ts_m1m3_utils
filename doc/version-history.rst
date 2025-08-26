@@ -8,6 +8,7 @@ v0.4.0
 ------
 
 * BoosterValves class - filter for booster valves activation
+* thermocouples module
 * calculate_far_neighbors_factors - calculate far neighbor values
 
 v0.3.2
