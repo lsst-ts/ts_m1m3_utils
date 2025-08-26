@@ -21,6 +21,7 @@
 
 import unittest
 
+import pandas as pd
 from astropy.time import Time, TimeDelta
 from lsst.ts.m1m3.utils import thermocouples
 from lsst.ts.xml.tables.m1m3 import ThermocoupleTable
@@ -31,11 +32,11 @@ class ThermocouplesTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.client = EfdClient("usdf_efd")
 
-    async def asyncTearDown(self) -> None:
-        try:
-            await self.client._influx_client.close()
-        except AttributeError:
-            await self.client.influx_client.close()
+    # async def asyncTearDown(self) -> None:
+    #    try:
+    #        await self.client._influx_client.close()
+    #    except AttributeError:
+    #        await self.client.influx_client.close()
 
     async def test_load(self) -> None:
         start = Time("2025-08-25T18:00:00")
@@ -50,6 +51,12 @@ class ThermocouplesTestCase(unittest.IsolatedAsyncioTestCase):
             assert 1010 <= data[tc.name].sum() <= 1100
             assert 8 <= data[tc.name].min() <= 9.5
             assert 9 <= data[tc.name].max() <= 10
+
+            diff = data.index.diff()
+            assert diff[0] is pd.NaT
+
+            diff = diff[1:]
+            assert len(diff[diff != pd.Timedelta("00:00:30")]) == 0
 
     async def test_empty(self) -> None:
         start = Time("2025-08-21T18:00:30")

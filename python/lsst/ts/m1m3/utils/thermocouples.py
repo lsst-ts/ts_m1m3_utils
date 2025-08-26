@@ -22,6 +22,8 @@
 __all__ = ["get_scanner_data", "remove_cold_junction_gradient", "remove_offsets"]
 
 
+import asyncio
+
 import numpy as np
 import pandas as pd
 from astropy.time import Time
@@ -36,88 +38,103 @@ async def get_scanner_data(
     time_bin: int = 30,
     do_remove_cold_junction: bool = True,
     do_remove_offsets: bool = True,
+    parallel_tasks: int = 5,
 ) -> pd.DataFrame:
     """Get all thermal scanner data within a given time window.
 
     Parameters
     ----------
-    client : EFD client
+    client : `EfdClient`
         EFD client you want to use
-    start_time : Time
+    start_time : `Time`
         Astropy Time for beginning of query windo.
-    end_time : Time
+    end_time : `Time`
         Astropy Time for end of query window.
-    time_bin : int
+    time_bin : `int`
         Time bin in seconds (thermocouple records data every 30s
         so a bin smaller than 30s is not recommended).
         default: 30
-    do_remove_cold_junction : boolean
+    do_remove_cold_junction : `boolean`, optional
         If true, remove the cold junction offset for the thermal scanner.
-        default: True
-    do_remove_offsets : boolean
+        Defaults to True.
+    do_remove_offsets : `boolean`, optional
         If true, remove offsets for each thermocouple.
-        default: True
+        Defaults to True.
+    parallel_tasks : `int`, optional
+        Number of parallel queries to run. Defaults to 5.
 
     Returns
     -------
-    scanner_dataframe : pandas dataframe
+    scanner_dataframe : `DataFrame`
         Time binned dataframe of EFD temperatures where the index
         is time and the columns are thermocouple temperature.
     """
 
-    scanner_dataframe = pd.DataFrame()
-
     # bin frequency
     freq = str(time_bin) + "s"
 
-    # Loop through every thermal scanner
-    for scanner in Scanner:
+    sem = asyncio.Semaphore(parallel_tasks)
+
+    async def load_chunk(scanner: Scanner, sensor: int) -> pd.DataFrame | None:
         thermocouples = [
             [thermo.name, thermo.channel % 16, int(thermo.channel / 16) + 1]
             for thermo in ThermocoupleTable
             if thermo.scanner.value == scanner
         ]
 
-        # Loop through every EFD division in that scanner
-        for sensor in range(1, 7):
-            fields: list[str] = []
-            query_thermocouples = [
-                [name, channel]
-                for [name, channel, star] in thermocouples
-                if star == sensor
-            ]
-            if query_thermocouples == []:
-                continue
-            else:
-                # Create or add to an EFD query for
-                # this EFD divisition of this scanner
-                if sensor == 1:
-                    fields.append(f'("temperatureItem0") AS "coldJunction{scanner}"')
-                for name, channel in query_thermocouples:
-                    fields.append(f'("temperatureItem{channel}") AS "{name}"')
+        query_thermocouples = [
+            [name, channel] for [name, channel, star] in thermocouples if star == sensor
+        ]
+        if query_thermocouples == []:
+            return None
 
-                if len(fields) == 0:
-                    raise RuntimeError(
-                        f"No fields available for scanner with index {scanner}."
-                    )
+        # Create or add to an EFD query for
+        # this EFD divisition of this scanner
 
-                data = await client.select_time_series(
-                    "lsst.sal.ESS.temperature",
-                    fields,
-                    start_time,
-                    end_time,
-                    index=scanner,
-                )
+        fields: list[str] = []
+        if sensor == 1:
+            fields.append(f'("temperatureItem0") AS "coldJunction{scanner}"')
+        for name, channel in query_thermocouples:
+            fields.append(f'("temperatureItem{channel}") AS "{name}"')
 
-                if scanner_dataframe.empty:
-                    if not (data.empty):
-                        scanner_dataframe = data.resample(freq).median()
-                elif not (data.empty):
-                    # if the query returns results, bin the results
-                    # based on the time_bin
-                    scanner_dataframe = scanner_dataframe.join(
-                        data.resample(freq).mean()
-                    )
+        if len(fields) == 0:
+            raise RuntimeError(f"No fields available for scanner with index {scanner}.")
+
+        async with sem:
+            data = await client.select_time_series(
+                "lsst.sal.ESS.temperature",
+                fields,
+                start_time,
+                end_time,
+                index=scanner,
+            )
+
+        if data.empty:
+            return data
+
+        return data.resample(freq).median()
+
+    tasks: list[asyncio.Task] = []
+
+    async with asyncio.TaskGroup() as tg:
+        # Loop through every thermal scanner
+        for scanner in Scanner:
+            # Loop through every EFD division in that scanner
+            for sensor in range(1, 7):
+                tasks.append(tg.create_task(load_chunk(scanner, sensor)))
+
+    scanner_dataframe = pd.DataFrame()
+
+    for data in [t.result() for t in tasks]:
+        if data is None or data.empty:
+            continue
+
+        if scanner_dataframe.empty:
+            scanner_dataframe = data
+        else:
+            # if the query returns results, bin the results
+            # based on the time_bin
+            scanner_dataframe = scanner_dataframe.join(data)
 
     if not (scanner_dataframe.empty):
         # Remove the cold junction offset if desired
@@ -190,157 +207,156 @@ def remove_offsets(data: pd.DataFrame) -> pd.DataFrame:
     KeyError
         Raised if some TC names are missing in supplied data.
     """
-    reference_offsets = pd.Series(
-        {
-            "MTC039M": 0.028294467528946043,
-            "MTC039F": 0.03376909911936978,
-            "MTC038B2": 0.02088131184407744,
-            "MTC040B1": 0.061522860632183506,
-            "MTC040M": 0.0360289739433904,
-            "MTC040F": 0.00039613402580566395,
-            "MTC034B": 0.028294467528946043,
-            "MTC036B": 0.03376909911936978,
-            "MTC036F": 0.042128462797246746,
-            "MTC035B": 0.019459606682545764,
-            "MTCOW9B": 0.02088131184407744,
-            "MTCOW9M": 0.061522860632183506,
-            "MTCOW9F": 0.0360289739433904,
-            "MTC037B": 0.00039613402580566395,
-            "MTC037F": 0.017248940879281086,
-            "MTCOW10B": 0.06711553301828675,
-            "MTCOW10M": 0.04965980086918029,
-            "MTCOW10F": 0.03353293962805155,
-            "MTCIW6B": 0.03813964061191583,
-            "MTCIW6M": 0.0684208922449727,
-            "MTCIW6F": 0.0535938167519681,
-            "MTC039B": 0.021438448683264225,
-            "MTC026B2": 0.03376909911936978,
-            "MTC030B2": 0.042128462797246746,
-            "MTCIW5B": 0.019459606682545764,
-            "MTCIW5F": 0.02088131184407744,
-            "MTCOW8B": 0.061522860632183506,
-            "MTCOW8M": 0.0360289739433904,
-            "MTCOW8F": 0.00039613402580566395,
-            "MTC031B": 0.017248940879281086,
-            "MTC031F": 0.06711553301828675,
-            "MTC033B": 0.04965980086918029,
-            "MTC033M": 0.03353293962805155,
-            "MTC033F": 0.0684208922449727,
-            "MTC032B": 0.0535938167519681,
-            "MTC032F": 0.021438448683264225,
-            "MTC029B": 0.028294467528946043,
-            "MTC029M": 0.04874993015523106,
-            "MTC029F": -0.047871163260872554,
-            "MTC028B": -0.025303341619109486,
-            "MTCOW7B": 0.00639149813492886,
-            "MTCOW7M": -0.025321798335337885,
-            "MTCOW7F": -0.04100289171740059,
-            "MTC030B1": -0.0673961252440367,
-            "MTC030M": -0.07648497904587878,
-            "MTC030F": -0.03650235041947476,
-            "MTCOW6F": 0.04874993015523106,
-            "MTCIW4B": -0.02381922986467881,
-            "MTCIW4F": -0.047331761157338094,
-            "MTC023B": -0.06214466595234898,
-            "MTC023M": -0.025321798335337885,
-            "MTC023F": -0.04100289171740059,
-            "MTC024B": -0.0673961252440367,
-            "MTC024F": -0.07648497904587878,
-            "MTC025B": -0.03650235041947476,
-            "MTC025F": -0.047871163260872554,
-            "MTC026B1": -0.06190069360009146,
-            "MTC026F": -0.005819818084705547,
-            "MTC027B": -0.01279407311064427,
-            "MTC017B1": -0.02381922986467881,
-            "MTC017F": -0.047331761157338094,
-            "MTC018B2": -0.06214466595234898,
-            "MTC019B": -0.025321798335337885,
-            "MTC021B": -0.04100289171740059,
-            "MTC021F": -0.0673961252440367,
-            "MTC020B": -0.07648497904587878,
-            "MTCOW5B": -0.03650235041947476,
-            "MTCOW5M": -0.047871163260872554,
-            "MTCOW5F": -0.025303341619109486,
-            "MTC022B": -0.06190069360009146,
-            "MTC022F": 0.00639149813492886,
-            "MTCOW6B": -0.005819818084705547,
-            "MTCOW6M": -0.01279407311064427,
-            "MTCOW4F": 0.028294467528946043,
-            "MTCIW3B": 0.023916937786404878,
-            "MTCIW3M": 0.00925847820690178,
-            "MTCIW3F": -0.008495476838882108,
-            "MTC016B": -0.0013832215272076287,
-            "MTC016M": 0.001434538836565441,
-            "MTC016F": -0.0004835478406723659,
-            "MTC017B2": 0.0064408847471719875,
-            "MTC018B1": 0.015604196864430663,
-            "MTC018M": 0.03351489415627735,
-            "MTC018F": -0.033629519925340266,
-            "MTC010F": 0.028294467528946043,
-            "MTC012B": -0.004333903714729512,
-            "MTC014B": 0.00925847820690178,
-            "MTC014F": -0.008495476838882108,
-            "MTC013B": -0.0013832215272076287,
-            "MTCOW3B": 0.001434538836565441,
-            "MTCOW3M": 0.0064408847471719875,
-            "MTCOW3F": 0.015604196864430663,
-            "MTC015B": -0.033629519925340266,
-            "MTC015F": 0.03640655174879911,
-            "MTCOW4B": 0.024314482838752257,
-            "MTCOW4M": 0.020237958230639085,
-            "MTC007B2": -0.004333903714729512,
-            "MTC008B2": 0.023916937786404878,
-            "MTCIW2B": -0.0013832215272076287,
-            "MTCIW2F": 0.001434538836565441,
-            "MTCOW2B": -0.0004835478406723659,
-            "MTCOW2M": 0.0064408847471719875,
-            "MTCOW2F": 0.015604196864430663,
-            "MTC009B": 0.03351489415627735,
-            "MTC009F": -0.033629519925340266,
-            "MTC011B": 0.0292251169656804,
-            "MTC011M": 0.03640655174879911,
-            "MTC011F": 0.024314482838752257,
-            "MTC010B": 0.020237958230639085,
-            "MTC043B": -0.035222856396593276,
-            "MTC043F": -0.030929785260162823,
-            "MTC042B": -0.03372508199374089,
-            "MTCOW11B": 0.03223991992325488,
-            "MTCOW11M": 0.02207644681440252,
-            "MTCOW11F": 0.02887829740318783,
-            "MTC044B": -0.018623295853802364,
-            "MTC044F": -0.019093149919467776,
-            "MTCOW12B": -0.014497566567793932,
-            "MTCOW12M": -0.015887696138401696,
-            "MTCOW12F": -0.049667697570657164,
-            "MTC038B1": -0.014497566567793932,
-            "MTC038F": -0.015887696138401696,
-            "MTC040B2": -0.049667697570657164,
-            "MTC041B": -0.022783132857461634,
-            "MTC006B": 0.028294467528946043,
-            "MTC006M": -0.035222856396593276,
-            "MTC006F": -0.030929785260162823,
-            "MTC005B": -0.03372508199374089,
-            "MTCOW1B": 0.03223991992325488,
-            "MTCOW1M": 0.02207644681440252,
-            "MTCOW1F": 0.02887829740318783,
-            "MTC008B1": -0.019093149919467776,
-            "MTC008M": -0.028693284703892596,
-            "MTC008F": -0.026665935676122066,
-            "MTCIW1B": -0.035222856396593276,
-            "MTCIW1F": -0.030929785260162823,
-            "MTC001B": -0.03372508199374089,
-            "MTC001M": 0.03223991992325488,
-            "MTC001F": 0.02207644681440252,
-            "MTC002B": -0.018623295853802364,
-            "MTC002F": -0.019093149919467776,
-            "MTC003B": -0.028693284703892596,
-            "MTC003F": -0.026665935676122066,
-            "MTC007B1": -0.049667697570657164,
-            "MTC007F": -0.024475232069958053,
-            "MTC004B": -0.022783132857461634,
-        }
-    )
-    for tc_name in reference_offsets.keys():
-        data[tc_name] = data[tc_name] - reference_offsets[tc_name]
+    reference_offsets = {
+        "MTC039M": 0.028294467528946043,
+        "MTC039F": 0.03376909911936978,
+        "MTC038B2": 0.02088131184407744,
+        "MTC040B1": 0.061522860632183506,
+        "MTC040M": 0.0360289739433904,
+        "MTC040F": 0.00039613402580566395,
+        "MTC034B": 0.028294467528946043,
+        "MTC036B": 0.03376909911936978,
+        "MTC036F": 0.042128462797246746,
+        "MTC035B": 0.019459606682545764,
+        "MTCOW9B": 0.02088131184407744,
+        "MTCOW9M": 0.061522860632183506,
+        "MTCOW9F": 0.0360289739433904,
+        "MTC037B": 0.00039613402580566395,
+        "MTC037F": 0.017248940879281086,
+        "MTCOW10B": 0.06711553301828675,
+        "MTCOW10M": 0.04965980086918029,
+        "MTCOW10F": 0.03353293962805155,
+        "MTCIW6B": 0.03813964061191583,
+        "MTCIW6M": 0.0684208922449727,
+        "MTCIW6F": 0.0535938167519681,
+        "MTC039B": 0.021438448683264225,
+        "MTC026B2": 0.03376909911936978,
+        "MTC030B2": 0.042128462797246746,
+        "MTCIW5B": 0.019459606682545764,
+        "MTCIW5F": 0.02088131184407744,
+        "MTCOW8B": 0.061522860632183506,
+        "MTCOW8M": 0.0360289739433904,
+        "MTCOW8F": 0.00039613402580566395,
+        "MTC031B": 0.017248940879281086,
+        "MTC031F": 0.06711553301828675,
+        "MTC033B": 0.04965980086918029,
+        "MTC033M": 0.03353293962805155,
+        "MTC033F": 0.0684208922449727,
+        "MTC032B": 0.0535938167519681,
+        "MTC032F": 0.021438448683264225,
+        "MTC029B": 0.028294467528946043,
+        "MTC029M": 0.04874993015523106,
+        "MTC029F": -0.047871163260872554,
+        "MTC028B": -0.025303341619109486,
+        "MTCOW7B": 0.00639149813492886,
+        "MTCOW7M": -0.025321798335337885,
+        "MTCOW7F": -0.04100289171740059,
+        "MTC030B1": -0.0673961252440367,
+        "MTC030M": -0.07648497904587878,
+        "MTC030F": -0.03650235041947476,
+        "MTCOW6F": 0.04874993015523106,
+        "MTCIW4B": -0.02381922986467881,
+        "MTCIW4F": -0.047331761157338094,
+        "MTC023B": -0.06214466595234898,
+        "MTC023M": -0.025321798335337885,
+        "MTC023F": -0.04100289171740059,
+        "MTC024B": -0.0673961252440367,
+        "MTC024F": -0.07648497904587878,
+        "MTC025B": -0.03650235041947476,
+        "MTC025F": -0.047871163260872554,
+        "MTC026B1": -0.06190069360009146,
+        "MTC026F": -0.005819818084705547,
+        "MTC027B": -0.01279407311064427,
+        "MTC017B1": -0.02381922986467881,
+        "MTC017F": -0.047331761157338094,
+        "MTC018B2": -0.06214466595234898,
+        "MTC019B": -0.025321798335337885,
+        "MTC021B": -0.04100289171740059,
+        "MTC021F": -0.0673961252440367,
+        "MTC020B": -0.07648497904587878,
+        "MTCOW5B": -0.03650235041947476,
+        "MTCOW5M": -0.047871163260872554,
+        "MTCOW5F": -0.025303341619109486,
+        "MTC022B": -0.06190069360009146,
+        "MTC022F": 0.00639149813492886,
+        "MTCOW6B": -0.005819818084705547,
+        "MTCOW6M": -0.01279407311064427,
+        "MTCOW4F": 0.028294467528946043,
+        "MTCIW3B": 0.023916937786404878,
+        "MTCIW3M": 0.00925847820690178,
+        "MTCIW3F": -0.008495476838882108,
+        "MTC016B": -0.0013832215272076287,
+        "MTC016M": 0.001434538836565441,
+        "MTC016F": -0.0004835478406723659,
+        "MTC017B2": 0.0064408847471719875,
+        "MTC018B1": 0.015604196864430663,
+        "MTC018M": 0.03351489415627735,
+        "MTC018F": -0.033629519925340266,
+        "MTC010F": 0.028294467528946043,
+        "MTC012B": -0.004333903714729512,
+        "MTC014B": 0.00925847820690178,
+        "MTC014F": -0.008495476838882108,
+        "MTC013B": -0.0013832215272076287,
+        "MTCOW3B": 0.001434538836565441,
+        "MTCOW3M": 0.0064408847471719875,
+        "MTCOW3F": 0.015604196864430663,
+        "MTC015B": -0.033629519925340266,
+        "MTC015F": 0.03640655174879911,
+        "MTCOW4B": 0.024314482838752257,
+        "MTCOW4M": 0.020237958230639085,
+        "MTC007B2": -0.004333903714729512,
+        "MTC008B2": 0.023916937786404878,
+        "MTCIW2B": -0.0013832215272076287,
+        "MTCIW2F": 0.001434538836565441,
+        "MTCOW2B": -0.0004835478406723659,
+        "MTCOW2M": 0.0064408847471719875,
+        "MTCOW2F": 0.015604196864430663,
+        "MTC009B": 0.03351489415627735,
+        "MTC009F": -0.033629519925340266,
+        "MTC011B": 0.0292251169656804,
+        "MTC011M": 0.03640655174879911,
+        "MTC011F": 0.024314482838752257,
+        "MTC010B": 0.020237958230639085,
+        "MTC043B": -0.035222856396593276,
+        "MTC043F": -0.030929785260162823,
+        "MTC042B": -0.03372508199374089,
+        "MTCOW11B": 0.03223991992325488,
+        "MTCOW11M": 0.02207644681440252,
+        "MTCOW11F": 0.02887829740318783,
+        "MTC044B": -0.018623295853802364,
+        "MTC044F": -0.019093149919467776,
+        "MTCOW12B": -0.014497566567793932,
+        "MTCOW12M": -0.015887696138401696,
+        "MTCOW12F": -0.049667697570657164,
+        "MTC038B1": -0.014497566567793932,
+        "MTC038F": -0.015887696138401696,
+        "MTC040B2": -0.049667697570657164,
+        "MTC041B": -0.022783132857461634,
+        "MTC006B": 0.028294467528946043,
+        "MTC006M": -0.035222856396593276,
+        "MTC006F": -0.030929785260162823,
+        "MTC005B": -0.03372508199374089,
+        "MTCOW1B": 0.03223991992325488,
+        "MTCOW1M": 0.02207644681440252,
+        "MTCOW1F": 0.02887829740318783,
+        "MTC008B1": -0.019093149919467776,
+        "MTC008M": -0.028693284703892596,
+        "MTC008F": -0.026665935676122066,
+        "MTCIW1B": -0.035222856396593276,
+        "MTCIW1F": -0.030929785260162823,
+        "MTC001B": -0.03372508199374089,
+        "MTC001M": 0.03223991992325488,
+        "MTC001F": 0.02207644681440252,
+        "MTC002B": -0.018623295853802364,
+        "MTC002F": -0.019093149919467776,
+        "MTC003B": -0.028693284703892596,
+        "MTC003F": -0.026665935676122066,
+        "MTC007B1": -0.049667697570657164,
+        "MTC007F": -0.024475232069958053,
+        "MTC004B": -0.022783132857461634,
+    }
+
+    for tc_name, offset in reference_offsets.items():
+        data[tc_name] = data[tc_name] - offset
 
     return data
