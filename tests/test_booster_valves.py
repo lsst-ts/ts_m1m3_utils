@@ -30,12 +30,6 @@ class BoosterValvesTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.client = EfdClient("usdf_efd")
 
-    async def asyncTearDown(self) -> None:
-        try:
-            await self.client._influx_client.close()
-        except AttributeError:
-            await self.client.influx_client.close()
-
     async def get_tests(self, start: Time, end: Time) -> list[BoosterValves]:
         return [tt async for tt in self.bv.find_opened(start, end)]
 

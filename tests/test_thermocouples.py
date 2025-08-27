@@ -32,12 +32,6 @@ class ThermocouplesTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.client = EfdClient("usdf_efd")
 
-    # async def asyncTearDown(self) -> None:
-    #    try:
-    #        await self.client._influx_client.close()
-    #    except AttributeError:
-    #        await self.client.influx_client.close()
-
     async def test_load(self) -> None:
         start = Time("2025-08-25T18:00:00")
         end = start + TimeDelta(3600, format="sec")

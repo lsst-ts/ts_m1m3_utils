@@ -32,12 +32,6 @@ class BumpTestTimesTestCase(unittest.IsolatedAsyncioTestCase):
         self.client = EfdClient("usdf_efd")
         self.btt = BumpTestTimes(self.client)
 
-    async def asyncTearDown(self) -> None:
-        try:
-            await self.client._influx_client.close()
-        except AttributeError:
-            await self.client.influx_client.close()
-
     async def get_tests(
         self, actuator_id: int, start_t: Time, end_t: Time
     ) -> tuple[BumpTestTimes, BumpTestTimes]:
