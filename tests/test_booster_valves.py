@@ -19,11 +19,22 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import os
+import sys
 import unittest
 
+import vcr
 from astropy.time import Time, TimeDelta
 from lsst.ts.m1m3.utils import BoosterValves
 from lsst_efd_client import EfdClient
+
+CASSETTE_DIR = os.path.join(os.path.dirname(__file__), "cassettes")
+
+myvcr = vcr.VCR(
+    cassette_library_dir=CASSETTE_DIR,
+    record_mode=os.getenv("RECORD_MODE", "none"),
+    match_on=["method", "scheme", "host", "port", "path", "query", "body"],
+)
 
 
 class BoosterValvesTestCase(unittest.IsolatedAsyncioTestCase):
@@ -35,31 +46,34 @@ class BoosterValvesTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_booster_valves(self) -> None:
         self.bv = BoosterValves(self.client)
-        ret = await self.get_tests(
-            Time("2024-01-10 01:00:00"), Time("2024-01-10 02:00:00")
-        )
-        assert len(ret) == 58
+        with myvcr.use_cassette("booster_valves.yaml"):
+            ret = await self.get_tests(
+                Time("2024-01-10 01:00:00"), Time("2024-01-10 02:00:00")
+            )
+            assert len(ret) == 58
 
-        ret = await self.get_tests(
-            Time("2024-01-10 00:00:00"), Time("2024-01-10 10:00:00")
-        )
-        assert len(ret) == 432
+            ret = await self.get_tests(
+                Time("2024-01-10 00:00:00"), Time("2024-01-10 10:00:00")
+            )
+            assert len(ret) == 432
 
     async def test_booster_diff(self) -> None:
-        self.bv = BoosterValves(self.client, TimeDelta(3600, format="sec"))
-        ret = await self.get_tests(
-            Time("2024-01-10 01:00:00"), Time("2024-01-10 02:00:00")
-        )
-        assert len(ret) == 58
+        with myvcr.use_cassette("booster_diff.yaml"):
+            self.bv = BoosterValves(self.client, TimeDelta(3600, format="sec"))
+            ret = await self.get_tests(
+                Time("2024-01-10 01:00:00"), Time("2024-01-10 02:00:00")
+            )
+            assert len(ret) == 58
 
-        ret = await self.get_tests(
-            Time("2024-01-10 00:00:00"), Time("2024-01-10 10:00:00")
-        )
-        assert len(ret) == 432
+            ret = await self.get_tests(
+                Time("2024-01-10 00:00:00"), Time("2024-01-10 10:00:00")
+            )
+            assert len(ret) == 432
 
 
 if __name__ == "__main__":
-    print(
-        "This test assumes EFD connectivity setup. If it did not pass, this might be the cause."
-    )
+    if "RECORD_MODE" not in os.environ:
+        print(
+            f"To generate new cassettes with pre-downloaded data use: RECORD_MODE=all python {sys.argv[0]}"
+        )
     unittest.main()
