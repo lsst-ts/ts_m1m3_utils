@@ -23,11 +23,12 @@ __all__ = ["get_scanner_data", "remove_cold_junction_gradient", "remove_offsets"
 
 
 import asyncio
+import re
 
 import numpy as np
 import pandas as pd
 from astropy.time import Time
-from lsst.ts.xml.tables.m1m3 import Scanner, ThermocoupleTable
+from lsst.ts.xml.tables.m1m3 import Scanner, ThermocoupleTable, find_thermocouple
 from lsst_efd_client import EfdClient
 
 
@@ -38,7 +39,6 @@ async def get_scanner_data(
     time_bin: int = 30,
     do_remove_cold_junction: bool = True,
     do_remove_offsets: bool = True,
-    parallel_tasks: int = 5,
 ) -> pd.DataFrame:
     """Get all thermal scanner data within a given time window.
 
@@ -60,8 +60,6 @@ async def get_scanner_data(
     do_remove_offsets : `boolean`, optional
         If true, remove offsets for each thermocouple.
         Defaults to True.
-    parallel_tasks : `int`, optional
-        Number of parallel queries to run. Defaults to 5.
 
     Returns
     -------
@@ -73,68 +71,77 @@ async def get_scanner_data(
     # bin frequency
     freq = str(time_bin) + "s"
 
-    sem = asyncio.Semaphore(parallel_tasks)
+    chunk_re = re.compile(r"m1m3-ts-0\d (\d+)/\d+")
 
-    async def load_chunk(scanner: Scanner, sensor: int) -> pd.DataFrame | None:
-        thermocouples = [
-            [thermo.name, thermo.channel % 16, int(thermo.channel / 16) + 1]
-            for thermo in ThermocoupleTable
-            if thermo.scanner.value == scanner
-        ]
+    async def load_chunk(scanner: Scanner) -> list[pd.DataFrame] | None:
+        fields = ["sensorName"] + [f"temperatureItem{s}" for s in range(16)]
 
-        query_thermocouples = [
-            [name, channel] for [name, channel, star] in thermocouples if star == sensor
-        ]
-        if query_thermocouples == []:
-            return None
-
-        # Create or add to an EFD query for
-        # this EFD divisition of this scanner
-
-        fields: list[str] = []
-        if sensor == 1:
-            fields.append(f'("temperatureItem0") AS "coldJunction{scanner}"')
-        for name, channel in query_thermocouples:
-            fields.append(f'("temperatureItem{channel}") AS "{name}"')
-
-        if len(fields) == 0:
-            raise RuntimeError(f"No fields available for scanner with index {scanner}.")
-
-        async with sem:
-            data = await client.select_time_series(
-                "lsst.sal.ESS.temperature",
-                fields,
-                start_time,
-                end_time,
-                index=scanner,
-            )
+        data = await client.select_time_series(
+            "lsst.sal.ESS.temperature",
+            fields,
+            start_time,
+            end_time,
+            index=scanner,
+        )
 
         if data.empty:
-            return data
+            return None
 
-        return data.resample(freq).median()
+        chunks: list[list[pd.Series]] = [[], [], []]
+
+        for row in data.iterrows():
+            chunk = chunk_re.match(row[1]["sensorName"])
+            if chunk is None:
+                raise RuntimeError(
+                    f"Unexpected sensorName for index {scanner}: {row[1]['sensorName']}"
+                )
+            chunk_index = int(chunk[1]) - 1
+            if chunk_index < len(chunks):
+                chunks[chunk_index].append(row)
+
+        ret = [pd.concat([row[1] for row in chunk], axis=1).T for chunk in chunks]
+
+        # rename columns
+
+        for chunk_index, chunk_data in enumerate(ret):
+            to_drop = ["sensorName"]
+            for i in range(16):
+                name = f"temperatureItem{i}"
+                tc = find_thermocouple(scanner, chunk_index * 16 + i)
+                if tc is None:
+                    if chunk_index == 0 and i == 0:
+                        chunk_data.rename(
+                            columns={name: f"coldJunction{scanner}"}, inplace=True
+                        )
+                    else:
+                        to_drop.append(name)
+                else:
+                    chunk_data.rename(columns={name: tc.name}, inplace=True)
+
+            chunk_data.drop(columns=to_drop, inplace=True)
+
+            ret[chunk_index] = chunk_data.resample(freq).median()
+
+        return ret
 
     tasks: list[asyncio.Task] = []
 
     async with asyncio.TaskGroup() as tg:
         # Loop through every thermal scanner
         for scanner in Scanner:
-            # Loop through every EFD division in that scanner
-            for sensor in range(1, 7):
-                tasks.append(tg.create_task(load_chunk(scanner, sensor)))
+            tasks.append(tg.create_task(load_chunk(scanner)))
 
     scanner_dataframe = pd.DataFrame()
 
-    for data in [t.result() for t in tasks]:
-        if data is None or data.empty:
+    for scanner_data in [t.result() for t in tasks]:
+        if scanner_data is None:
             continue
 
-        if scanner_dataframe.empty:
-            scanner_dataframe = data
-        else:
-            # if the query returns results, bin the results
-            # based on the time_bin
-            scanner_dataframe = scanner_dataframe.join(data)
+        for chunk in scanner_data:
+            if scanner_dataframe.empty:
+                scanner_dataframe = chunk
+            else:
+                scanner_dataframe = scanner_dataframe.join(chunk)
 
     if not (scanner_dataframe.empty):
         # Remove the cold junction offset if desired

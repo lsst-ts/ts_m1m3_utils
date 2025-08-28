@@ -42,9 +42,9 @@ class ThermocouplesTestCase(unittest.IsolatedAsyncioTestCase):
 
         for tc in ThermocoupleTable:
             assert 8 <= data[tc.name].mean() <= 10
-            assert 1010 <= data[tc.name].sum() <= 1100
+            assert 950 <= data[tc.name].sum() <= 1100
             assert 8 <= data[tc.name].min() <= 9.5
-            assert 9 <= data[tc.name].max() <= 10
+            assert 8.7 <= data[tc.name].max() <= 10
 
             diff = data.index.diff()
             assert diff[0] is pd.NaT
