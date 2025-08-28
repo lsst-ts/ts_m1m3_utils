@@ -1,0 +1,369 @@
+# This file is part of ts_m1m3_utils.
+#
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ["get_scanner_data", "remove_cold_junction_gradient", "remove_offsets"]
+
+
+import asyncio
+import re
+
+import numpy as np
+import pandas as pd
+from astropy.time import Time
+from lsst.ts.xml.tables.m1m3 import Scanner, ThermocoupleTable, find_thermocouple
+from lsst_efd_client import EfdClient
+
+
+async def get_scanner_data(
+    client: EfdClient,
+    start_time: Time,
+    end_time: Time,
+    time_bin: int = 30,
+    do_remove_cold_junction: bool = True,
+    do_remove_offsets: bool = True,
+) -> pd.DataFrame:
+    """Get all thermal scanner data within a given time window.
+
+    Parameters
+    ----------
+    client : `EfdClient`
+        EFD client you want to use
+    start_time : `Time`
+        Astropy Time for beginning of query windo.
+    end_time : `Time`
+        Astropy Time for end of query window.
+    time_bin : `int`
+        Time bin in seconds (thermocouple records data every 30s
+        so a bin smaller than 30s is not recommended).
+        default: 30
+    do_remove_cold_junction : `boolean`, optional
+        If true, remove the cold junction offset for the thermal scanner.
+        Defaults to True.
+    do_remove_offsets : `boolean`, optional
+        If true, remove offsets for each thermocouple.
+        Defaults to True.
+
+    Returns
+    -------
+    scanner_dataframe : `DataFrame`
+        Time binned dataframe of EFD temperatures where the index
+        is time and the columns are thermocouple temperature.
+    """
+
+    # bin frequency
+    freq = str(time_bin) + "s"
+
+    chunk_re = re.compile(r"m1m3-ts-0\d (\d+)/\d+")
+
+    async def load_chunk(scanner: Scanner) -> list[pd.DataFrame] | None:
+        fields = ["sensorName"] + [f"temperatureItem{s}" for s in range(16)]
+
+        data = await client.select_time_series(
+            "lsst.sal.ESS.temperature",
+            fields,
+            start_time,
+            end_time,
+            index=scanner,
+        )
+
+        if data.empty:
+            return None
+
+        chunks: list[list[pd.Series]] = [[], [], []]
+
+        for row in data.iterrows():
+            chunk = chunk_re.match(row[1]["sensorName"])
+            if chunk is None:
+                raise RuntimeError(
+                    f"Unexpected sensorName for index {scanner}: {row[1]['sensorName']}"
+                )
+            chunk_index = int(chunk[1]) - 1
+            if chunk_index < len(chunks):
+                chunks[chunk_index].append(row)
+
+        ret = [pd.concat([row[1] for row in chunk], axis=1).T for chunk in chunks]
+
+        # rename columns
+
+        for chunk_index, chunk_data in enumerate(ret):
+            to_drop = ["sensorName"]
+            for i in range(16):
+                name = f"temperatureItem{i}"
+                tc = find_thermocouple(scanner, chunk_index * 16 + i)
+                if tc is None:
+                    if chunk_index == 0 and i == 0:
+                        chunk_data.rename(
+                            columns={name: f"coldJunction{scanner}"}, inplace=True
+                        )
+                    else:
+                        to_drop.append(name)
+                else:
+                    chunk_data.rename(columns={name: tc.name}, inplace=True)
+
+            chunk_data.drop(columns=to_drop, inplace=True)
+
+            ret[chunk_index] = chunk_data.resample(freq).median()
+
+        return ret
+
+    tasks: list[asyncio.Task] = []
+
+    async with asyncio.TaskGroup() as tg:
+        # Loop through every thermal scanner
+        for scanner in Scanner:
+            tasks.append(tg.create_task(load_chunk(scanner)))
+
+    scanner_dataframe = pd.DataFrame()
+
+    for scanner_data in [t.result() for t in tasks]:
+        if scanner_data is None:
+            continue
+
+        for chunk in scanner_data:
+            if scanner_dataframe.empty:
+                scanner_dataframe = chunk
+            else:
+                scanner_dataframe = scanner_dataframe.join(chunk)
+
+    if not (scanner_dataframe.empty):
+        # Remove the cold junction offset if desired
+        if do_remove_cold_junction:
+            scanner_dataframe = remove_cold_junction_gradient(scanner_dataframe)
+
+        # Remove the individual thermocouple offset if desired
+        if do_remove_offsets:
+            scanner_dataframe = remove_offsets(scanner_dataframe)
+
+    return scanner_dataframe
+
+
+def remove_cold_junction_gradient(data: pd.DataFrame) -> pd.DataFrame:
+    """Remove the thermal scanner cold junction offset.
+
+    Parameters
+    ----------
+    data : pandas dataframe
+        Time binned dataframe of EFD temperatures where the index
+        is time and the columns are thermocouple temperature.
+
+    Returns
+    -------
+    data : pandas dataframe
+        Time binned dataframe of EFD temperatures where the index
+        is time and the columns are thermocouple temperature with the cold
+        junction temperature removed.
+    """
+    data["coldJunctionMean"] = data[
+        [
+            f"coldJunction{Scanner.TS_01}",
+            f"coldJunction{Scanner.TS_02}",
+            f"coldJunction{Scanner.TS_03}",
+            f"coldJunction{Scanner.TS_04}",
+        ]
+    ].mean(axis=1)
+    for column in data.columns:
+        for thermocouple in ThermocoupleTable:
+            if thermocouple.name == column:
+                scanner_number = str(thermocouple.scanner.value)
+                data[column] = np.array(data[column]) - np.array(
+                    data["coldJunction" + scanner_number] - data.coldJunctionMean
+                )
+    return data
+
+
+def remove_offsets(data: pd.DataFrame) -> pd.DataFrame:
+    """Remove the individual thermocouple reference offsets.
+     This is based on three nights and mornings of very stable data in 2025:
+     7/21, 7/26, and 8/05.
+
+    Parameters
+    ----------
+    data : pandas dataframe
+        Time binned dataframe of EFD temperatures where the index is time and
+        the columns are thermocouple temperature. Columns names are
+        thermocouple names from ThermocoupleData structure - starting with MTC.
+        The algorithm doesn't check if all names are present.
+
+    Returns
+    -------
+    data : pandas dataframe
+        Time binned dataframe of EFD temperatures where the index is time and
+        the columns are thermocouple temperature with the cold junction
+        temperature removed.
+
+    Raises
+    ------
+    KeyError
+        Raised if some TC names are missing in supplied data.
+    """
+    reference_offsets = {
+        "MTC039M": 0.028294467528946043,
+        "MTC039F": 0.03376909911936978,
+        "MTC038B2": 0.02088131184407744,
+        "MTC040B1": 0.061522860632183506,
+        "MTC040M": 0.0360289739433904,
+        "MTC040F": 0.00039613402580566395,
+        "MTC034B": 0.028294467528946043,
+        "MTC036B": 0.03376909911936978,
+        "MTC036F": 0.042128462797246746,
+        "MTC035B": 0.019459606682545764,
+        "MTCOW9B": 0.02088131184407744,
+        "MTCOW9M": 0.061522860632183506,
+        "MTCOW9F": 0.0360289739433904,
+        "MTC037B": 0.00039613402580566395,
+        "MTC037F": 0.017248940879281086,
+        "MTCOW10B": 0.06711553301828675,
+        "MTCOW10M": 0.04965980086918029,
+        "MTCOW10F": 0.03353293962805155,
+        "MTCIW6B": 0.03813964061191583,
+        "MTCIW6M": 0.0684208922449727,
+        "MTCIW6F": 0.0535938167519681,
+        "MTC039B": 0.021438448683264225,
+        "MTC026B2": 0.03376909911936978,
+        "MTC030B2": 0.042128462797246746,
+        "MTCIW5B": 0.019459606682545764,
+        "MTCIW5F": 0.02088131184407744,
+        "MTCOW8B": 0.061522860632183506,
+        "MTCOW8M": 0.0360289739433904,
+        "MTCOW8F": 0.00039613402580566395,
+        "MTC031B": 0.017248940879281086,
+        "MTC031F": 0.06711553301828675,
+        "MTC033B": 0.04965980086918029,
+        "MTC033M": 0.03353293962805155,
+        "MTC033F": 0.0684208922449727,
+        "MTC032B": 0.0535938167519681,
+        "MTC032F": 0.021438448683264225,
+        "MTC029B": 0.028294467528946043,
+        "MTC029M": 0.04874993015523106,
+        "MTC029F": -0.047871163260872554,
+        "MTC028B": -0.025303341619109486,
+        "MTCOW7B": 0.00639149813492886,
+        "MTCOW7M": -0.025321798335337885,
+        "MTCOW7F": -0.04100289171740059,
+        "MTC030B1": -0.0673961252440367,
+        "MTC030M": -0.07648497904587878,
+        "MTC030F": -0.03650235041947476,
+        "MTCOW6F": 0.04874993015523106,
+        "MTCIW4B": -0.02381922986467881,
+        "MTCIW4F": -0.047331761157338094,
+        "MTC023B": -0.06214466595234898,
+        "MTC023M": -0.025321798335337885,
+        "MTC023F": -0.04100289171740059,
+        "MTC024B": -0.0673961252440367,
+        "MTC024F": -0.07648497904587878,
+        "MTC025B": -0.03650235041947476,
+        "MTC025F": -0.047871163260872554,
+        "MTC026B1": -0.06190069360009146,
+        "MTC026F": -0.005819818084705547,
+        "MTC027B": -0.01279407311064427,
+        "MTC017B1": -0.02381922986467881,
+        "MTC017F": -0.047331761157338094,
+        "MTC018B2": -0.06214466595234898,
+        "MTC019B": -0.025321798335337885,
+        "MTC021B": -0.04100289171740059,
+        "MTC021F": -0.0673961252440367,
+        "MTC020B": -0.07648497904587878,
+        "MTCOW5B": -0.03650235041947476,
+        "MTCOW5M": -0.047871163260872554,
+        "MTCOW5F": -0.025303341619109486,
+        "MTC022B": -0.06190069360009146,
+        "MTC022F": 0.00639149813492886,
+        "MTCOW6B": -0.005819818084705547,
+        "MTCOW6M": -0.01279407311064427,
+        "MTCOW4F": 0.028294467528946043,
+        "MTCIW3B": 0.023916937786404878,
+        "MTCIW3M": 0.00925847820690178,
+        "MTCIW3F": -0.008495476838882108,
+        "MTC016B": -0.0013832215272076287,
+        "MTC016M": 0.001434538836565441,
+        "MTC016F": -0.0004835478406723659,
+        "MTC017B2": 0.0064408847471719875,
+        "MTC018B1": 0.015604196864430663,
+        "MTC018M": 0.03351489415627735,
+        "MTC018F": -0.033629519925340266,
+        "MTC010F": 0.028294467528946043,
+        "MTC012B": -0.004333903714729512,
+        "MTC014B": 0.00925847820690178,
+        "MTC014F": -0.008495476838882108,
+        "MTC013B": -0.0013832215272076287,
+        "MTCOW3B": 0.001434538836565441,
+        "MTCOW3M": 0.0064408847471719875,
+        "MTCOW3F": 0.015604196864430663,
+        "MTC015B": -0.033629519925340266,
+        "MTC015F": 0.03640655174879911,
+        "MTCOW4B": 0.024314482838752257,
+        "MTCOW4M": 0.020237958230639085,
+        "MTC007B2": -0.004333903714729512,
+        "MTC008B2": 0.023916937786404878,
+        "MTCIW2B": -0.0013832215272076287,
+        "MTCIW2F": 0.001434538836565441,
+        "MTCOW2B": -0.0004835478406723659,
+        "MTCOW2M": 0.0064408847471719875,
+        "MTCOW2F": 0.015604196864430663,
+        "MTC009B": 0.03351489415627735,
+        "MTC009F": -0.033629519925340266,
+        "MTC011B": 0.0292251169656804,
+        "MTC011M": 0.03640655174879911,
+        "MTC011F": 0.024314482838752257,
+        "MTC010B": 0.020237958230639085,
+        "MTC043B": -0.035222856396593276,
+        "MTC043F": -0.030929785260162823,
+        "MTC042B": -0.03372508199374089,
+        "MTCOW11B": 0.03223991992325488,
+        "MTCOW11M": 0.02207644681440252,
+        "MTCOW11F": 0.02887829740318783,
+        "MTC044B": -0.018623295853802364,
+        "MTC044F": -0.019093149919467776,
+        "MTCOW12B": -0.014497566567793932,
+        "MTCOW12M": -0.015887696138401696,
+        "MTCOW12F": -0.049667697570657164,
+        "MTC038B1": -0.014497566567793932,
+        "MTC038F": -0.015887696138401696,
+        "MTC040B2": -0.049667697570657164,
+        "MTC041B": -0.022783132857461634,
+        "MTC006B": 0.028294467528946043,
+        "MTC006M": -0.035222856396593276,
+        "MTC006F": -0.030929785260162823,
+        "MTC005B": -0.03372508199374089,
+        "MTCOW1B": 0.03223991992325488,
+        "MTCOW1M": 0.02207644681440252,
+        "MTCOW1F": 0.02887829740318783,
+        "MTC008B1": -0.019093149919467776,
+        "MTC008M": -0.028693284703892596,
+        "MTC008F": -0.026665935676122066,
+        "MTCIW1B": -0.035222856396593276,
+        "MTCIW1F": -0.030929785260162823,
+        "MTC001B": -0.03372508199374089,
+        "MTC001M": 0.03223991992325488,
+        "MTC001F": 0.02207644681440252,
+        "MTC002B": -0.018623295853802364,
+        "MTC002F": -0.019093149919467776,
+        "MTC003B": -0.028693284703892596,
+        "MTC003F": -0.026665935676122066,
+        "MTC007B1": -0.049667697570657164,
+        "MTC007F": -0.024475232069958053,
+        "MTC004B": -0.022783132857461634,
+    }
+
+    for tc_name, offset in reference_offsets.items():
+        data[tc_name] = data[tc_name] - offset
+
+    return data

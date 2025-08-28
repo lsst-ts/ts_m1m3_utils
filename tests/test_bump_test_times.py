@@ -19,24 +19,29 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import os
+import sys
 import unittest
 
+import vcr
 from astropy.time import Time
 from lsst.ts.m1m3.utils import BumpTestTimes
 from lsst.ts.xml.tables.m1m3 import force_actuator_from_id
 from lsst_efd_client import EfdClient
+
+CASSETTE_DIR = os.path.join(os.path.dirname(__file__), "cassettes")
+
+myvcr = vcr.VCR(
+    cassette_library_dir=CASSETTE_DIR,
+    record_mode=os.getenv("RECORD_MODE", "none"),
+    match_on=["method", "scheme", "host", "port", "path", "query", "body"],
+)
 
 
 class BumpTestTimesTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.client = EfdClient("usdf_efd")
         self.btt = BumpTestTimes(self.client)
-
-    async def asyncTearDown(self) -> None:
-        try:
-            await self.client._influx_client.close()
-        except AttributeError:
-            await self.client.influx_client.close()
 
     async def get_tests(
         self, actuator_id: int, start_t: Time, end_t: Time
@@ -67,24 +72,27 @@ class BumpTestTimesTestCase(unittest.IsolatedAsyncioTestCase):
         return (primary, secondary)
 
     async def test_times_saa(self) -> None:
-        primary, secondary = await self.get_tests(
-            101, Time("2024-09-09 13:28:04"), Time("2024-09-16 13:28:04")
-        )
+        with myvcr.use_cassette("bump_test_times_saa.yaml"):
+            primary, secondary = await self.get_tests(
+                101, Time("2024-09-09 13:28:04"), Time("2024-09-16 13:28:04")
+            )
 
         self.assertEqual(len(primary), 10)
         self.assertEqual(len(secondary), 0)
 
     async def test_times_daa(self) -> None:
-        primary, secondary = await self.get_tests(
-            435, Time("2024-09-09 13:28:04"), Time("2024-09-16 13:28:04")
-        )
+        with myvcr.use_cassette("bump_test_times_daa.yaml"):
+            primary, secondary = await self.get_tests(
+                435, Time("2024-09-09 13:28:04"), Time("2024-09-16 13:28:04")
+            )
 
         self.assertEqual(len(primary), 10)
         self.assertEqual(len(secondary), 10)
 
 
 if __name__ == "__main__":
-    print(
-        "This test assumes EFD connectivity setup. If it did not pass, this might be the cause."
-    )
+    if "RECORD_MODE" not in os.environ:
+        print(
+            f"To generate new cassettes with pre-downloaded data use: RECORD_MODE=all python {sys.argv[0]}"
+        )
     unittest.main()

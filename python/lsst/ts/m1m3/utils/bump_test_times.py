@@ -36,13 +36,13 @@ class BumpTest:
     fa : `ForceActuatorData`
     start_time : `Time`
     end_time : `Time`
-    result : `int`
+    result : `BumpTestStatus`
     """
 
     fa: ForceActuatorData
     start_time: Time
     end_time: Time
-    result: int | None
+    result: BumpTestStatus | None
 
 
 class BumpTestTimes:
@@ -121,4 +121,6 @@ class BumpTestTimes:
                 yield BumpTest(fa, start_time, None, None)
             else:
                 end_time = Time(ends.index[0])
-                yield BumpTest(fa, start_time, end_time, ends[status].iloc[0])
+                yield BumpTest(
+                    fa, start_time, end_time, BumpTestStatus(ends[status].iloc[0])
+                )

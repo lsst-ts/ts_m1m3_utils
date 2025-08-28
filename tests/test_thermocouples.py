@@ -1,6 +1,6 @@
 # This file is part of ts_m1m3_utils.
 #
-# Developed for the Rubin Observatory Telescope and Site System.
+# Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
 # (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
@@ -23,9 +23,11 @@ import os
 import sys
 import unittest
 
+import pandas as pd
 import vcr
 from astropy.time import Time, TimeDelta
-from lsst.ts.m1m3.utils import BoosterValves
+from lsst.ts.m1m3.utils import thermocouples
+from lsst.ts.xml.tables.m1m3 import ThermocoupleTable
 from lsst_efd_client import EfdClient
 
 CASSETTE_DIR = os.path.join(os.path.dirname(__file__), "cassettes")
@@ -37,38 +39,39 @@ myvcr = vcr.VCR(
 )
 
 
-class BoosterValvesTestCase(unittest.IsolatedAsyncioTestCase):
+class ThermocouplesTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.client = EfdClient("usdf_efd")
 
-    async def get_tests(self, start: Time, end: Time) -> list[BoosterValves]:
-        return [tt async for tt in self.bv.find_opened(start, end)]
+    async def test_load(self) -> None:
+        start = Time("2025-08-25T18:00:00")
+        end = start + TimeDelta(3600, format="sec")
 
-    async def test_booster_valves(self) -> None:
-        self.bv = BoosterValves(self.client)
-        with myvcr.use_cassette("booster_valves.yaml"):
-            ret = await self.get_tests(
-                Time("2024-01-10 01:00:00"), Time("2024-01-10 02:00:00")
-            )
-            assert len(ret) == 58
+        with myvcr.use_cassette("thermocouples_test_load.yaml"):
+            data = await thermocouples.get_scanner_data(self.client, start, end)
 
-            ret = await self.get_tests(
-                Time("2024-01-10 00:00:00"), Time("2024-01-10 10:00:00")
-            )
-            assert len(ret) == 432
+        assert len(data.index) == 120
 
-    async def test_booster_diff(self) -> None:
-        with myvcr.use_cassette("booster_diff.yaml"):
-            self.bv = BoosterValves(self.client, TimeDelta(3600, format="sec"))
-            ret = await self.get_tests(
-                Time("2024-01-10 01:00:00"), Time("2024-01-10 02:00:00")
-            )
-            assert len(ret) == 58
+        for tc in ThermocoupleTable:
+            assert 8 <= data[tc.name].mean() <= 10
+            assert 950 <= data[tc.name].sum() <= 1100
+            assert 8 <= data[tc.name].min() <= 9.5
+            assert 8.7 <= data[tc.name].max() <= 10
 
-            ret = await self.get_tests(
-                Time("2024-01-10 00:00:00"), Time("2024-01-10 10:00:00")
-            )
-            assert len(ret) == 432
+            diff = data.index.diff()
+            assert diff[0] is pd.NaT
+
+            diff = diff[1:]
+            assert len(diff[diff != pd.Timedelta("00:00:30")]) == 0
+
+    async def test_empty(self) -> None:
+        start = Time("2025-08-21T18:00:30")
+        end = start + TimeDelta(1800, format="sec")
+
+        with myvcr.use_cassette("thermocouples_test_empty.yaml"):
+            data = await thermocouples.get_scanner_data(self.client, start, end)
+
+        assert data.empty
 
 
 if __name__ == "__main__":
