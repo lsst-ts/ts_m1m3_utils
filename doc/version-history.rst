@@ -4,6 +4,12 @@
 Version History
 ===============
 
+v0.4.2
+------
+
+* Fixes for new lsst-efd-client API.
+* find-changes tool to look for changes in data.
+
 v0.4.1
 ------
 
