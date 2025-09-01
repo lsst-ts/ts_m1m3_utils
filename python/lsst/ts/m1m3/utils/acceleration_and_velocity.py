@@ -158,7 +158,7 @@ class AccelerationAndVelocity:
             'FROM "efd"."autogen"."lsst.sal.MTM1M3.logevent_detailedState" '
             f"WHERE time <= '{start_time.isot}+00:00' ORDER BY time DESC LIMIT 1"
         )
-        ret = await self.client.influx_client.query(query)
+        ret = await self.client._do_query(query)
         detailed_states = await self.client.select_time_series(
             "lsst.sal.MTM1M3.logevent_detailedState",
             "detailedState",
@@ -243,7 +243,7 @@ class AccelerationAndVelocity:
                 calculated as difference in speed from the last datapoint,
                 divided by interval between the two measurements.
             """
-            logging.info(f"Querying EFD for {axis} data")
+            logging.info(f"Querying {self.efd_name} for {axis} data")
             ret = await self.client.select_time_series(
                 f"lsst.sal.MTMount.{axis}",
                 [
