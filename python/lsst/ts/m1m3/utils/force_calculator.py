@@ -33,6 +33,7 @@ from lsst.ts.xml.tables.m1m3 import (
     FATABLE_YFA,
     FATABLE_ZFA,
     HP_COUNT,
+    FAOrientation,
     FATable,
     actuator_id_to_index,
 )
@@ -407,6 +408,15 @@ class ForceCalculator:
             return NotImplemented
 
     class SALAppliedForces(AppliedForces):
+        """Construct AppliedForces from BaseMsgType/SAL.
+
+        Parameters
+        ----------
+        data : `BaseMsgType`
+            SAL-like data, with xForces, yForces and zForces arrays and f[xyz],
+            m[xyz] and forceMagnitude values.
+        """
+
         def __init__(self, data: BaseMsgType):
             self.xForces = data.xForces
             self.fx = data.fx
@@ -421,6 +431,52 @@ class ForceCalculator:
             self.mz = data.mz
 
             self.forceMagnitude = data.forceMagnitude
+
+    class CylinderForces(AppliedForces):
+        """Construct AppliedForces from provided cylinder forces.
+
+        Parameters
+        ----------
+        primary_forces : `[float]`
+            Primary cylinder forces.
+        secondary_forces : `[float]`
+            Secondary cylinder forces.
+        """
+
+        def __init__(self, primary_forces: list[float], secondary_forces: list[float]):
+            self.primaryCylinderForce = primary_forces
+            self.secondaryCylinderForce = secondary_forces
+
+            x_forces = []
+            y_forces = []
+            z_forces = []
+
+            RECIPROCAL_SQRT2 = 0.70710678118654752440084436210485
+
+            for fa in FATable:
+                p_force = primary_forces[fa.index]
+                if fa.orientation == FAOrientation.NA:
+                    z_forces.append(primary_forces[fa.index])
+                else:
+                    s_force = secondary_forces[fa.s_index]
+                    if fa.orientation == FAOrientation.X_PLUS:
+                        x_force = s_force * RECIPROCAL_SQRT2
+                        x_forces.append(x_force)
+                        z_forces.append(x_force + p_force)
+                    elif fa.orientation == FAOrientation.X_MINUS:
+                        x_force = s_force * RECIPROCAL_SQRT2
+                        x_forces.append(-x_force)
+                        z_forces.append(x_force + p_force)
+                    elif fa.orientation == FAOrientation.Y_PLUS:
+                        y_force = s_force * RECIPROCAL_SQRT2
+                        y_forces.append(y_force)
+                        z_forces.append(y_force + p_force)
+                    elif fa.orientation == FAOrientation.Y_MINUS:
+                        y_force = s_force * RECIPROCAL_SQRT2
+                        y_forces.append(-y_force)
+                        z_forces.append(y_force + p_force)
+
+            super().__init__(x_forces, y_forces, z_forces)
 
     def __init__(self, config_dir: None | str | pathlib.Path = None):
         self.hardpoint_to_forces_moments = ForceTable()

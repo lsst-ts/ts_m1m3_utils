@@ -51,6 +51,44 @@ class ForceCalculatorTestCase(unittest.TestCase):
         self.assertAlmostEqual(a.my, 430.0953056310003)
         self.assertAlmostEqual(a.mz, -212.0001997679999)
 
+    def test_cylinderForces(self) -> None:
+        a = ForceCalculator.CylinderForces(
+            [1] * FATABLE_ZFA, [2] * (FATABLE_XFA + FATABLE_YFA)
+        )
+
+        RECIPROCAL_SQRT2 = 0.70710678118654752440084436210485
+
+        np.testing.assert_allclose(np.abs(a.xForces), 2 * RECIPROCAL_SQRT2)
+        np.testing.assert_allclose(np.abs(a.yForces), 2 * RECIPROCAL_SQRT2)
+        np.testing.assert_allclose(
+            a.zForces[:12],
+            [
+                1,
+                2.414214,
+                2.414214,
+                2.414214,
+                2.414214,
+                1,
+                1,
+                2.414214,
+                2.414214,
+                2.414214,
+                2.414214,
+                2.414214,
+            ],
+            atol=1e-3,
+        )
+
+        self.assertAlmostEqual(a.fx, 0)
+        self.assertAlmostEqual(a.fy, 130.10764773)
+        self.assertAlmostEqual(a.fz, 314.39191898)
+
+        self.assertAlmostEqual(a.mx, 280.86894580)
+        self.assertAlmostEqual(a.my, 0.00021763)
+        self.assertAlmostEqual(a.mz, -0.00012753)
+
+        self.assertAlmostEqual(a.forceMagnitude, 340.250317742)
+
     def test_hardpoints(self) -> None:
         fam = self.calculator.hardpoint_forces_and_moments(
             [100, -100, 200, -200, 300, -300]
