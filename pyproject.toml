@@ -14,7 +14,6 @@ dependencies = [
   "matplotlib",
   "numpy",
   "pandas",
-  "PySide6",
   "scipy",
   "sty",
   "tqdm",
