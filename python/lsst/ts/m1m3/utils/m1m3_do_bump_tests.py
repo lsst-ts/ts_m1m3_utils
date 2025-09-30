@@ -23,8 +23,9 @@ import argparse
 import asyncio
 import logging
 
-from lsst.ts.m1m3.utils import BumpTestRunner, BumpTestsList
+from lsst.ts.m1m3.utils import BumpTestRunner
 from lsst.ts.salobj import Domain, Remote
+from lsst.ts.xml.tables.m1m3 import ForceActuatorData
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -70,33 +71,14 @@ async def do_tests(m1m3: Remote, timeout: float, serial: bool, skip: list[int]) 
     skip : list[int]
         List of force actuators to skip.
     """
-    runner = BumpTestRunner(BumpTestsList.all_tests(m1m3, skip))
 
-    m1m3.evt_forceActuatorBumpTestStatus.callback = runner.force_actuator_bump_test_status
+    def print_start(actuator: ForceActuatorData, primary: bool) -> None:
+        print(f"Starting test on {actuator.actuator_id} - {'primary' if primary else 'secondary'}")
 
-    distance = 10
-    if not (serial):
-        distance = m1m3.evt_forceActuatorSettings.get().bumpTestMinimalDistance
+    passed, failed = await BumpTestRunner.run(m1m3, serial, timeout, skip, print_start)
 
-    while True:
-        test = await runner.next(distance, timeout)
-        if test is None:
-            break
-
-        primary = test.is_primary()
-
-        print(f"Starting test on {test.actuator.actuator_id} - {'primary' if primary else 'secondary'}")
-
-        await m1m3.cmd_forceActuatorBumpTest.set_start(
-            actuatorId=test.actuator.actuator_id,
-            testPrimary=primary,
-            testSecondary=not (primary),
-        )
-
-    await runner.wait_finish(timeout)
-
-    print("Passed:\n", "\n   ".join([str(p.actuator) for p in runner.passed]))
-    print("Failed:\n", "\n   ".join([str(f.actuator) for f in runner.failed]))
+    print("Passed:\n", "\n   ".join([str(p.actuator) for p in passed]))
+    print("Failed:\n", "\n   ".join([str(f.actuator) for f in failed]))
 
 
 async def main() -> None:
