@@ -69,22 +69,18 @@ class ThermocoupleAnalysis:
     all_thermocouples_dataframe : pd.DataFrame
         Time binned dataframe of EFD temperatures where the index
         is time and the columns are thermocouple temperature.
-    vertical_gradient_dataframe : pd.DataFrame
+    vertical_cell_gradient_dataframe : pd.DataFrame
         Time binned dataframe of EFD temperatures where the index
         is time and the columns are difference between the front and back
         temperature of the mirror.
     nonstandard_thermoocouples : List
         List of thermocouples that are in cells with nonstandard air
         nozzle configurations.
-    xy_r_gradients : pd.DataFrame
+    xyz_r_gradients : pd.DataFrame
         Time binned dataframe of EFD temperatures where the index
-        is time and the columns are x, y, and radial gradients across
+        is time and the columns are x, y, z, and radial gradients across
         the mirror in deg C/m.
-    vertical_xy_r_gradients : pd.DataFrame
-        Time binned dataframe of EFD temperatures where the index
-        is time and the columns are x, y, and radial gradients in
-        the front-back temperature difference across the mirror in deg C/m.
-    z_gradient : pd.DataFrame
+    mean_vertical_cell_gradient : pd.DataFrame
         Time binned dataframe of EFD temperatures where the index
         is time and the columns are the mean front-back temperature gradient
         across the mirror, excluding nonstandard thermocouples.
@@ -105,11 +101,10 @@ class ThermocoupleAnalysis:
         self.efd_client = client
         self.cold_junction_dataframe: pd.DataFrame | None = None
         self.all_thermocouples_dataframe: pd.DataFrame | None = None
-        self.vertical_gradient_dataframe: pd.DataFrame | None = None
+        self.vertical_cell_gradient_dataframe: pd.DataFrame | None = None
         self.nonstandard_thermocouples: list = []
-        self.xy_r_gradients: pd.DataFrame | None = None
-        self.vertical_xy_r_gradients: pd.DataFrame | None = None
-        self.z_gradient: pd.DataFrame | None = None
+        self.xyz_r_gradients: pd.DataFrame | None = None
+        self.mean_vertical_cell_gradient: pd.DataFrame | None = None
         self.bulk_glass_temperature_metrics: pd.DataFrame | None = None
         self.vertical_gradient_temperature_metrics: pd.DataFrame | None = None
 
@@ -255,20 +250,19 @@ class ThermocoupleAnalysis:
 
             self.calculate_vertical_differences()
 
-            self.xy_r_gradients = self.calculate_gradients_xy_r()
+            self.xyz_r_gradients = self.calculate_gradients_xy_r()
             _, z_filtered = self.__coordinate_map(
                 make_3d_map=False, remove_nonstandard_cells=True
             )
-            self.z_gradient = z_filtered.mean(axis=1, skipna=True)
-            self.vertical_xy_r_gradients = self.calculate_gradients_xy_r(
-                use_3d_dataset=False
-            )
+            self.mean_vertical_cell_gradient = z_filtered.mean(axis=1, skipna=True)
 
             self.bulk_glass_temperature_metrics = self.compute_temp_stats_and_rate(
                 data=self.all_thermocouples_dataframe,
             )
             self.vertical_gradient_temperature_metrics = (
-                self.compute_temp_stats_and_rate(data=self.vertical_gradient_dataframe)
+                self.compute_temp_stats_and_rate(
+                    data=self.vertical_cell_gradient_dataframe
+                )
             )
 
     def __remove_cold_junction_gradient(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -530,7 +524,7 @@ class ThermocoupleAnalysis:
         if make_3d_map:
             data = self.all_thermocouples_dataframe
         else:
-            data = self.vertical_gradient_dataframe
+            data = self.vertical_cell_gradient_dataframe
 
         thermocouple: List[ThermocoupleData] = []
         the_thermocouple: ThermocoupleData
@@ -617,7 +611,7 @@ class ThermocoupleAnalysis:
                             )
 
             # Create the new DataFrame
-            self.vertical_gradient_dataframe = pd.DataFrame(result)
+            self.vertical_cell_gradient_dataframe = pd.DataFrame(result)
 
     def calculate_gradients_xy_r(
         self,
@@ -655,7 +649,7 @@ class ThermocoupleAnalysis:
             - 'x_gradient'   : Estimated mean ∂t/∂x
             - 'y_gradient'    : Estimated mean ∂t/∂y
             - 'radial_gradient'  : Estimated radial gradient
-            - 'z_gradient'  :  Estimated mean ∂t/∂z if 3D dataset is used
+            - 'z_gradient'  :  Estimated mean ∂t/∂z if use_3d_dataset=True
         """
 
         xyz, temperatures = self.__coordinate_map(
