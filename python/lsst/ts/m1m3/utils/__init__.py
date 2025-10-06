@@ -34,3 +34,4 @@ from .find_changes import ChangedValue, find_changes
 from .force_actuator_forces import ForceActuatorForces
 from .force_calculator import ForceCalculator
 from .simulator import Simulator
+from .thermocouples import ThermocoupleAnalysis

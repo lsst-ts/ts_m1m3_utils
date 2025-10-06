@@ -4,6 +4,12 @@
 Version History
 ===============
 
+=======
+v0.5.0
+------
+
+* ThermocoupleAnalysis to calculate M1M3 thermocouple metrics
+
 v0.4.2
 ------
 
