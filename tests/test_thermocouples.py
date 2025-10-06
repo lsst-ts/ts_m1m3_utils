@@ -93,11 +93,11 @@ class ThermocouplesTestCase(unittest.IsolatedAsyncioTestCase):
 
         assert len(self.tc_analysis.all_thermocouples_dataframe.index) == 12
 
-        assert len(self.tc_analysis.vertical_gradient_dataframe.index) == 12
+        assert len(self.tc_analysis.vertical_cell_gradient_dataframe.index) == 12
 
-        assert 0.25 <= self.tc_analysis.z_gradient.iloc[0] <= 0.26
+        assert 0.25 <= self.tc_analysis.mean_vertical_cell_gradient.iloc[0] <= 0.26
 
-        assert -0.02 <= self.tc_analysis.xy_r_gradients.x_gradient.iloc[0] <= 0.02
+        assert -0.02 <= self.tc_analysis.xyz_r_gradients.x_gradient.iloc[0] <= 0.02
 
     async def test_bulk_metrics(self) -> None:
         start = Time("2025-08-25T18:00:00")
