@@ -231,7 +231,12 @@ class ThermocoupleAnalysis:
 
             # Remove the individual thermocouple offset if desired
             if do_remove_offsets:
-                scanner_dataframe = self.__remove_offsets(scanner_dataframe)
+                if do_remove_cold_junction:
+                    scanner_dataframe = self.__remove_offsets_after_cold_junction(
+                        scanner_dataframe
+                    )
+                else:
+                    scanner_dataframe = self.__remove_offsets_alone(scanner_dataframe)
 
             cold_junction_columns = [
                 "coldJunction114",
@@ -298,9 +303,10 @@ class ThermocoupleAnalysis:
                     )
         return data
 
-    def __remove_offsets(self, data: pd.DataFrame) -> pd.DataFrame:
+    def __remove_offsets_after_cold_junction(self, data: pd.DataFrame) -> pd.DataFrame:
         """Remove the individual thermocouple reference offsets.
-        This is based on one morning of very stable data in 2025:
+        This is based on one morning of very stable data in 2025
+        once cold junction offsets were removed:
         7/21.
 
         Parameters
@@ -472,6 +478,188 @@ class ThermocoupleAnalysis:
             "MTC007B1": 0.0107459811496593,
             "MTC007F": 0.006834750850451599,
             "MTC004B": 0.09557912629126086,
+        }
+
+        for tc_name, offset in reference_offsets.items():
+            data[tc_name] = data[tc_name] - offset
+
+        return data
+
+    def __remove_offsets_alone(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Remove the individual thermocouple reference offsets.
+        This is based on one morning of very stable data in 2025
+        from 12:35 to 12:45 UTC:
+        7/21.
+
+        Parameters
+        ----------
+        data : pandas dataframe
+            Time binned dataframe of EFD temperatures where the index is
+            time and the columns are thermocouple temperature. Columns names
+            are thermocouple names from ThermocoupleData structure - starting
+            with MTC.
+
+            The algorithm doesn't check if all names are present.
+
+        Returns
+        -------
+        data : pandas dataframe
+            Time binned dataframe of EFD temperatures where the
+            index is time and the columns are thermocouple temperature
+            with the cold junction temperature removed.
+
+        Raises
+        ------
+        KeyError
+            Raised if some TC names are missing in supplied data.
+        """
+        reference_offsets = {
+            "MTCIW1B": 0.01726390825559019,
+            "MTCIW1F": 0.0032138060217034694,
+            "MTC001B": -0.007481126915918601,
+            "MTC001M": -0.0009061147088873511,
+            "MTC001F": -0.01685102475832583,
+            "MTC002B": -0.024285965096460593,
+            "MTC002F": -0.031026153695093407,
+            "MTC003B": -0.07307107938479067,
+            "MTC003F": -0.10370619786928774,
+            "MTC007B1": -0.08756602300356509,
+            "MTC007F": -0.08981102002810122,
+            "MTC004B": -0.0012760449762213356,
+            "MTC006B": -0.06845105184267641,
+            "MTC006M": -0.09426105512331606,
+            "MTC006F": -0.10819595349978091,
+            "MTC005B": 0.0015539835577142113,
+            "MTCOW1B": 0.10067893968869565,
+            "MTCOW1M": 0.02987882601071714,
+            "MTCOW1F": 0.03215395914365171,
+            "MTC008B1": 0.028348941672338236,
+            "MTC008M": 0.00937401758481382,
+            "MTC008F": -0.02155092252443911,
+            "MTC038B1": -0.012075929772363913,
+            "MTC038F": -0.04493105901430727,
+            "MTC040B2": -0.0024811555261480935,
+            "MTC041B": -0.04714596761416079,
+            "MTC043B": -0.07148111356447817,
+            "MTC043F": -0.09759114278505923,
+            "MTC042B": -0.07594101918886782,
+            "MTCOW11B": 0.04761397348691343,
+            "MTCOW11M": 0.016949004996312845,
+            "MTCOW11F": 0.023808975089086283,
+            "MTC044B": -0.009161071907984032,
+            "MTC044F": -0.058500986229883443,
+            "MTCOW12B": -0.10972602857302309,
+            "MTCOW12M": -0.12459614766787172,
+            "MTCOW12F": -0.16124613774965885,
+            "MTC007B2": -0.07504098905275942,
+            "MTC008B2": 0.035603923666967144,
+            "MTCIW2B": 0.015413970816625345,
+            "MTCIW2F": -0.01652601255129458,
+            "MTCOW2B": 0.013553829062474954,
+            "MTCOW2M": -0.00518610967348696,
+            "MTCOW2F": -0.02924111379336001,
+            "MTC009B": 0.04771391855527281,
+            "MTC009F": -0.018531017434107077,
+            "MTC011B": 0.013518972266210304,
+            "MTC011M": 0.010199041235936868,
+            "MTC011F": -0.0012862492914068823,
+            "MTC010B": 0.07628905283261656,
+            "MTC010F": 0.019118947852147804,
+            "MTC012B": 0.003463859427465188,
+            "MTC014B": -0.01517603887270571,
+            "MTC014F": -0.05950119985293032,
+            "MTC013B": -0.026601104866968407,
+            "MTCOW3B": 0.053263873923314796,
+            "MTCOW3M": 0.05038883196164488,
+            "MTCOW3F": 0.022028894293798194,
+            "MTC015B": 0.06528894411374449,
+            "MTC015F": 0.023398895133031596,
+            "MTCOW4B": 0.053873891699804055,
+            "MTCOW4M": 0.004329032767308938,
+            "MTCOW4F": -0.005866174828516257,
+            "MTCIW3B": 0.027993793356908547,
+            "MTCIW3M": 0.015054006445897805,
+            "MTCIW3F": 0.00547387110043882,
+            "MTC016B": 0.02084896074582456,
+            "MTC016M": 0.0003737639074456567,
+            "MTC016F": 0.0016589354162347193,
+            "MTC017B2": 0.037003965247167335,
+            "MTC018B1": -0.026710968148218404,
+            "MTC018M": -0.039031105172144184,
+            "MTC018F": -0.07668602956484438,
+            "MTC017B1": 0.021903962958348976,
+            "MTC017F": -0.018470888268457664,
+            "MTC018B2": -0.046380977761255514,
+            "MTC019B": 0.026508922446264016,
+            "MTC021B": -0.0008509446496832495,
+            "MTC021F": -0.029941110741602196,
+            "MTC020B": 0.018398828375829446,
+            "MTCOW5B": 0.029498882163060892,
+            "MTCOW5M": -0.017965965401636374,
+            "MTCOW5F": -0.01038611425112368,
+            "MTC022B": 0.02241894708920835,
+            "MTC022F": -0.01678092969606997,
+            "MTCOW6B": 0.2128689478521478,
+            "MTCOW6M": 0.137468976843847,
+            "MTCOW6F": 0.1596988390569818,
+            "MTCIW4B": 0.01029393183041929,
+            "MTCIW4F": -0.012691145073877586,
+            "MTC023B": 0.07046401010800718,
+            "MTC023M": 0.06465394007016538,
+            "MTC023F": 0.0639788340215814,
+            "MTC024B": 0.04504897104550718,
+            "MTC024F": 0.03030888544370054,
+            "MTC025B": 0.10994402872372984,
+            "MTC025F": 0.05633403765012144,
+            "MTC026B1": 0.0466288756017816,
+            "MTC026F": 0.026873941290868508,
+            "MTC027B": 0.06422388063718198,
+            "MTC029B": 0.026038951743139017,
+            "MTC029M": 0.015754003394139994,
+            "MTCOW7M": 0.015463895667089212,
+            "MTCOW7F": 0.009783859122289407,
+            "MTC030B1": 0.06223389612485288,
+            "MTC030M": 0.03366400705624937,
+            "MTC030F": 0.004869003165258156,
+            "MTC029F": -0.0008410741205084448,
+            "MTC028B": 0.02895385729123472,
+            "MTCOW7B": 0.07641398416806577,
+            "MTC026B2": 0.04827897058774351,
+            "MTC030B2": 0.08164393411923765,
+            "MTCIW5B": 0.035719032156957375,
+            "MTCIW5F": 0.0038988302831780785,
+            "MTCOW8B": 0.03966910349179624,
+            "MTCOW8M": -0.019865970742212545,
+            "MTCOW8F": -0.03607604993532778,
+            "MTC031B": -0.09474103940676333,
+            "MTC031F": -0.08424590123842837,
+            "MTC033B": -0.030381136071192038,
+            "MTC033M": -0.020481090676294576,
+            "MTC033F": -0.01651108754824282,
+            "MTC032B": 0.02089888559628843,
+            "MTC032F": -0.01033609403322817,
+            "MTC034B": -0.11324108136843325,
+            "MTC036B": -0.02178600324343325,
+            "MTC036F": -0.14266608251284243,
+            "MTC035B": -0.06144612325380923,
+            "MTCOW9B": 0.07530896173764585,
+            "MTCOW9M": 0.07601396547604918,
+            "MTCOW9F": 0.039294118750585305,
+            "MTC037B": 0.012684078085912454,
+            "MTC037F": -0.014066009652124655,
+            "MTCOW10B": 0.038668937552465185,
+            "MTCOW10M": -0.0055061150903570775,
+            "MTCOW10F": 0.001623840201390969,
+            "MTCIW6B": 0.022948808539403665,
+            "MTCIW6M": -0.0026010800714361794,
+            "MTCIW6F": -0.022336034905420556,
+            "MTC039B": -0.004101066719995749,
+            "MTC039M": -0.03217103971193911,
+            "MTC039F": -0.06115611089419008,
+            "MTC038B2": 0.012393922675145852,
+            "MTC040B1": 0.005289001334203469,
+            "MTC040M": -0.017345981728540672,
+            "MTC040F": -0.027651147973047508,
         }
 
         for tc_name, offset in reference_offsets.items():
