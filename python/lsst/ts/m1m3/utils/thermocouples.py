@@ -113,8 +113,8 @@ class ThermocoupleAnalysis:
         start_time: Time,
         end_time: Time,
         time_bin: int = 60,
-        do_remove_cold_junction: bool = True,
-        do_remove_offsets: bool = True,
+        do_remove_cold_junction: bool = False,
+        do_remove_offsets: bool = False,
     ) -> None:
         """Get all thermal scanner data within a given time window.
 
