@@ -899,7 +899,7 @@ class ThermocoupleAnalysis:
 
             # Calculate r gradients
 
-            ArTAr = Ar.T @ A
+            ArTAr = Ar.T @ Ar
             ArTy = Ar.T @ temperature
 
             beta = np.linalg.lstsq(ArTAr, ArTy, rcond=None)[0]
