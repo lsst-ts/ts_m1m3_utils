@@ -39,7 +39,6 @@ from lsst.ts.xml.tables.m1m3 import (
     find_thermocouple,
 )
 from lsst_efd_client import EfdClient
-from scipy.spatial import cKDTree
 
 
 class ThermocoupleAnalysis:
@@ -822,22 +821,22 @@ class ThermocoupleAnalysis:
         use_3d_dataset : boolean
             If true, use the 3D data.
             If false, use the z difference dataset
-        k : int
-            Number of nearest neighbors used per fit (>=3). 10–20 is typical.
-        power : float
-            Distance weighting exponent; w = 1/(d+eps)**power.
-            Increase to emphasize local detail.
-        eps : float
-            Small number to avoid division by zero.
 
         Returns
         -------
         pd.DataFrame
             Columns:
+            - 'intercept'    : Estimated intercept for x, y, z fits
+            - 'intercept_err'    : Estimated intercept for x, y, z fits
             - 'x_gradient'   : Estimated mean ∂t/∂x
             - 'y_gradient'    : Estimated mean ∂t/∂y
             - 'radial_gradient'  : Estimated radial gradient
             - 'z_gradient'  :  Estimated mean ∂t/∂z if use_3d_dataset=True
+            - 'x_gradient_err'   : Estimated x gradient error
+            - 'y_gradient_err'    : Estimated y gradient error
+            - 'radial_gradient_err'  : Estimated radial gradient error
+            - 'z_gradient_err'  :  Estimated z gradient error
+                                   if use_3d_dataset=True
         """
 
         xyz, temperatures = self.__coordinate_map(
@@ -848,102 +847,85 @@ class ThermocoupleAnalysis:
         x = np.asarray(xyz[0]).astype(float)
         y = np.asarray(xyz[1]).astype(float)
         n = x.size
+        r = np.hypot(x, y)
 
         if use_3d_dataset:
             z = np.asarray(xyz[2]).astype(float)
-            pts = np.column_stack([x, y, z])
+            A = np.column_stack([np.ones(n), x, y, z])
+            Ar = np.column_stack(np.column_stack([np.ones(n), r, z]))
         else:
-            pts = np.column_stack([x, y])
-
-        tree = cKDTree(pts)
-
-        # Query k neighbors (include the point itself)
-        dists, idxs = tree.query(pts, k=min(k, n))
-
-        gx = np.full(n, np.nan)
-        gy = np.full(n, np.nan)
-        gr = np.full(n, np.nan)
+            A = np.column_stack([np.ones(n), x, y])
+            Ar = np.column_stack(np.column_stack([np.ones(n), r]))
 
         if use_3d_dataset:
-            gz = np.full(n, np.nan)
             all_gz = []
+            all_gz_err = []
 
         all_gx = []
         all_gy = []
         all_gr = []
+        all_gx_err = []
+        all_gy_err = []
+        all_gr_err = []
+        intercepts = []
+        intercepts_err = []
 
         for k, row in temperatures.iterrows():
             temperature = row.to_numpy()
             temperature = np.asarray(temperature).astype(float)
-            for i in range(n):
-                nn = idxs[i]
-                if use_3d_dataset:
-                    xi, yi, zi, ti = x[nn], y[nn], z[nn], temperature[nn]
-                else:
-                    xi, yi, ti = x[nn], y[nn], temperature[nn]
-                di = dists[i]
 
-                # Weights: closer neighbors count more
-                w = 1.0 / np.power(di + eps, power)
+            # Calculate x, y, z gradients
+            ATA = A.T @ A
+            ATy = A.T @ temperature
 
-                # Design matrix for plane: [x y 1]
-                if use_3d_dataset:
-                    A = np.column_stack([xi, yi, zi, np.ones_like(xi)])
-                else:
-                    A = np.column_stack([xi, yi, np.ones_like(xi)])
+            beta = np.linalg.lstsq(ATA, ATy, rcond=None)[0]
 
-                # Weighted least squares solve for [a, b, c]
-                # Solve (A^T W A) beta = A^T W z
-                W = w
-                Aw = A * W[:, None]
-                M = Aw.T @ A
-                rhs = Aw.T @ ti
-                if use_3d_dataset:
-                    try:
-                        a, b, c, d = np.linalg.solve(M, rhs)
-                    except np.linalg.LinAlgError:
-                        # Fallback to pseudo-inverse if neighbors
-                        # are degenerate
-                        a, b, c, d = np.linalg.pinv(M) @ rhs
-                else:
-                    try:
-                        a, b, c = np.linalg.solve(M, rhs)
-                    except np.linalg.LinAlgError:
-                        # Fallback to pseudo-inverse if neighbors
-                        # are degenerate
-                        a, b, c = np.linalg.pinv(M) @ rhs
+            y_hat = A @ np.linalg.lstsq(A, temperature, rcond=None)[0]
+            dof = max(len(y) - A.shape[1], 1)
+            sigma2 = float(np.sum((y - y_hat) ** 2) / dof)
+            cov = sigma2 * np.linalg.pinv(ATA)
+            errs = np.sqrt(np.diag(cov))
 
-                if use_3d_dataset:
-                    gx[i], gy[i], gz[i] = a, b, c
+            intercepts.append(beta[0])
+            intercepts_err.append(errs[0])
+            all_gx.append(beta[1])
+            all_gx_err.append(errs[1])
+            all_gy.append(beta[2])
+            all_gy_err.append(errs[2])
 
-                    rvec = np.array([x[i], y[i], z[i]], dtype=float)
-
-                else:
-                    gx[i], gy[i] = a, b
-
-                    rvec = np.array([x[i], y[i]], dtype=float)
-
-                rnorm = np.linalg.norm(rvec)
-                if rnorm > 0:
-                    gvec = np.array(
-                        [gx[i], gy[i]] + ([gz[i]] if use_3d_dataset else []),
-                        dtype=float,
-                    )
-                    gr[i] = float(gvec.dot(rvec) / rnorm)  # projection onto r̂
-
-            all_gx.append(np.nanmean(gx))
-            all_gy.append(np.nanmean(gy))
-            all_gr.append(np.nanmean(gr))
             if use_3d_dataset:
-                all_gz.append(np.nanmean(gz))
+                all_gz.append(beta[3])
+                all_gz_err.append(errs[3])
+
+            # Calculate r gradients
+
+            ArTAr = Ar.T @ A
+            ArTy = Ar.T @ temperature
+
+            beta = np.linalg.lstsq(ArTAr, ArTy, rcond=None)[0]
+
+            y_hat = Ar @ np.linalg.lstsq(Ar, temperature, rcond=None)[0]
+            dof = max(len(y) - Ar.shape[1], 1)
+            sigma2 = float(np.sum((y - y_hat) ** 2) / dof)
+            cov = sigma2 * np.linalg.pinv(ATA)
+            errs = np.sqrt(np.diag(cov))
+
+            all_gr.append(beta[1])
+            all_gr_err.append(errs[1])
 
         if use_3d_dataset:
             return pd.DataFrame(
                 data={
+                    "intercept": intercepts,
+                    "intercept_err": intercepts_err,
                     "x_gradient": all_gx,
+                    "x_gradient_err": all_gx_err,
                     "y_gradient": all_gy,
+                    "y_gradient_err": all_gy_err,
                     "z_gradient": all_gz,
+                    "z_gradient_err": all_gz_err,
                     "radial_gradient": all_gr,
+                    "radial_gradient_err": all_gr_err,
                 },
                 index=temperatures.index,
             )
@@ -951,9 +933,14 @@ class ThermocoupleAnalysis:
         else:
             return pd.DataFrame(
                 data={
+                    "intercept": intercepts,
+                    "intercept_err": intercepts_err,
                     "x_gradient": all_gx,
+                    "x_gradient_err": all_gx_err,
                     "y_gradient": all_gy,
+                    "y_gradient_err": all_gy_err,
                     "radial_gradient": all_gr,
+                    "radial_gradient_err": all_gr_err,
                 },
                 index=temperatures.index,
             )
