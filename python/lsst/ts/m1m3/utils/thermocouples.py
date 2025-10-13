@@ -852,10 +852,10 @@ class ThermocoupleAnalysis:
         if use_3d_dataset:
             z = np.asarray(xyz[2]).astype(float)
             A = np.column_stack([np.ones(n), x, y, z])
-            Ar = np.column_stack(np.column_stack([np.ones(n), r, z]))
+            Ar = np.column_stack([np.ones(n), r, z])
         else:
             A = np.column_stack([np.ones(n), x, y])
-            Ar = np.column_stack(np.column_stack([np.ones(n), r]))
+            Ar = np.column_stack([np.ones(n), r])
 
         if use_3d_dataset:
             all_gz = []
@@ -898,8 +898,6 @@ class ThermocoupleAnalysis:
                 all_gz_err.append(errs[3])
 
             # Calculate r gradients
-            print(Ar)
-            print(temperature)
             ArTAr = Ar.T @ Ar
             ArTy = Ar.T @ temperature
 
