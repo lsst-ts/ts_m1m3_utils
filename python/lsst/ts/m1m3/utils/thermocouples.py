@@ -898,7 +898,8 @@ class ThermocoupleAnalysis:
                 all_gz_err.append(errs[3])
 
             # Calculate r gradients
-
+            print(Ar)
+            print(temperature)
             ArTAr = Ar.T @ Ar
             ArTy = Ar.T @ temperature
 
