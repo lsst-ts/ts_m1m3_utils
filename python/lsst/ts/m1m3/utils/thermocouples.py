@@ -804,9 +804,6 @@ class ThermocoupleAnalysis:
         self,
         remove_nonstandard_cells: bool = True,
         use_3d_dataset: bool = True,
-        k: int = 20,
-        power: float = 1.0,
-        eps: float = 1e-9,
     ) -> pd.DataFrame:
         """
         Estimate per-point (gx, gy) and radial gradient gr

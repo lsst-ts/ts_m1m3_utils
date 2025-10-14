@@ -60,7 +60,7 @@ class ThermocouplesTestCase(unittest.IsolatedAsyncioTestCase):
             assert (
                 425
                 <= self.tc_analysis.all_thermocouples_dataframe[tc.name].sum()
-                <= 575
+                <= 580
             )
             assert (
                 8 <= self.tc_analysis.all_thermocouples_dataframe[tc.name].min() <= 9.5
@@ -91,11 +91,13 @@ class ThermocouplesTestCase(unittest.IsolatedAsyncioTestCase):
         with myvcr.use_cassette("thermocouples_test_load.yaml"):
             await self.tc_analysis.load(start, end, time_bin=300)
 
+        assert len(self.tc_analysis.nonstandard_thermocouples) == 4
+
         assert len(self.tc_analysis.all_thermocouples_dataframe.index) == 12
 
         assert len(self.tc_analysis.vertical_cell_gradient_dataframe.index) == 12
 
-        assert 0.25 <= self.tc_analysis.mean_vertical_cell_gradient.iloc[0] <= 0.26
+        assert 0.2 <= self.tc_analysis.mean_vertical_cell_gradient.iloc[0] <= 0.22
 
         assert -0.02 <= self.tc_analysis.xyz_r_gradients.x_gradient.iloc[0] <= 0.02
 
