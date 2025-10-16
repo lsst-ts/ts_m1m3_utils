@@ -101,7 +101,7 @@ async def run_loop() -> None:
     if len(args.actuators) == 0:
         args.actuators = [fa.actuator_id for fa in FATable]
 
-    logging.info(f"Looking for bump test times in {start_t} to {end_t}")
+    logging.info("Looking for bump test times in %s to %s", str(start_t), str(end_t))
 
     for aid in [int(a) for a in args.actuators]:
         actuator = force_actuator_from_id(aid)

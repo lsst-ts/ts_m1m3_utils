@@ -25,6 +25,7 @@ dependencies = [
 
 [project.scripts]
 correlate-timeseries = "lsst.ts.m1m3.utils.correlate_timeseries:run"
+compare-two-tma-settings = "lsst.ts.m1m3.utils.compare_forces_two_tmasettings:run"
 find-changes = "lsst.ts.m1m3.utils.find_changes:run"
 m1m3-aav = "lsst.ts.m1m3.utils.acceleration_and_velocity:run"
 m1m3-bump-tests-times = "lsst.ts.m1m3.utils.m1m3_bump_tests_times:run"
