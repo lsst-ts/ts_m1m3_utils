@@ -733,7 +733,17 @@ class ThermocoupleAnalysis:
                                 the_thermocouple.name: (
                                     the_thermocouple.x_position,
                                     the_thermocouple.y_position,
-                                    the_thermocouple.z_position,
+                                    (
+                                        0.5
+                                        if the_thermocouple.name[-1]
+                                        == "M"  # last char “M”  → z = 0
+                                        else (
+                                            1
+                                            if the_thermocouple.name[-1]
+                                            == "F"  # last char “F”  → z = 0.5
+                                            else 0
+                                        )
+                                    ),
                                 )
                             }
                         )
@@ -753,7 +763,17 @@ class ThermocoupleAnalysis:
                             the_thermocouple.name: (
                                 the_thermocouple.x_position,
                                 the_thermocouple.y_position,
-                                the_thermocouple.z_position,
+                                (
+                                    0.5
+                                    if the_thermocouple.name[-1]
+                                    == "M"  # last char “M”  → z = 0
+                                    else (
+                                        1
+                                        if the_thermocouple.name[-1]
+                                        == "F"  # last char “F”  → z = 0.5
+                                        else 0
+                                    )
+                                ),
                             )
                         }
                     )
