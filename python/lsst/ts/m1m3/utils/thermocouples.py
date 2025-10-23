@@ -129,10 +129,10 @@ class ThermocoupleAnalysis:
             default: 30
         do_remove_cold_junction : `boolean`, optional
             If true, remove the cold junction offset for the thermal scanner.
-            Defaults to True.
+            Defaults to False.
         do_remove_offsets : `boolean`, optional
             If true, remove offsets for each thermocouple.
-            Defaults to True.
+            Defaults to False.
 
         Returns
         -------
@@ -254,7 +254,7 @@ class ThermocoupleAnalysis:
 
             self.calculate_vertical_differences()
 
-            self.xyz_r_gradients = self.calculate_gradients_xy_r()
+            self.xyz_r_gradients = self.calculate_gradients_xyz_r()
             _, z_filtered = self.__coordinate_map(
                 make_3d_map=False, remove_nonstandard_cells=True
             )
@@ -820,13 +820,13 @@ class ThermocoupleAnalysis:
             # Create the new DataFrame
             self.vertical_cell_gradient_dataframe = pd.DataFrame(result)
 
-    def calculate_gradients_xy_r(
+    def calculate_gradients_xyz_r(
         self,
         remove_nonstandard_cells: bool = True,
         use_3d_dataset: bool = True,
     ) -> pd.DataFrame:
         """
-        Estimate per-point (gx, gy) and radial gradient gr
+        Estimate per-point (gx, gy, gz) and radial gradient gr
         using local weighted plane fits.
 
         Parameters
