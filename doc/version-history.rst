@@ -15,6 +15,7 @@ v0.4.2
 
 * Fixes for new lsst-efd-client API.
 * find-changes tool to look for changes in data.
+* correlate-timeseries to corralate data.
 
 v0.4.1
 ------
