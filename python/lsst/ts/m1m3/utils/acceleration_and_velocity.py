@@ -88,9 +88,7 @@ class AccelerationAndVelocity:
         Residuals of six forces/components.
     """
 
-    def __init__(
-        self, efd_name: str, config: pathlib.Path, load_from: pathlib.Path | None
-    ):
+    def __init__(self, efd_name: str, config: pathlib.Path, load_from: pathlib.Path | None):
         self.efd_name = efd_name
         self.force_calculator = ForceCalculator(config)
 
@@ -166,9 +164,7 @@ class AccelerationAndVelocity:
             end_time,
         )
         self.detailed_states = pd.concat([ret, detailed_states])
-        self.detailed_states.set_index(
-            pd.DatetimeIndex(self.detailed_states.index), inplace=True
-        )
+        self.detailed_states.set_index(pd.DatetimeIndex(self.detailed_states.index), inplace=True)
 
     def was_raised(self, start: pd.Timestamp, end: pd.Timestamp) -> bool:
         """Return whenever mirror ws raised (in either ACTIVE or
@@ -188,17 +184,16 @@ class AccelerationAndVelocity:
             detailedState) from start till end.
         """
         assert self.detailed_states is not None
-        last_state = self.detailed_states[
-            self.detailed_states.index < pd.to_datetime(start, utc=True)
-        ]["detailedState"].iloc[-1]
+        last_state = self.detailed_states[self.detailed_states.index < pd.to_datetime(start, utc=True)][
+            "detailedState"
+        ].iloc[-1]
         if DetailedStates(last_state) not in (
             DetailedStates.ACTIVE,
             DetailedStates.ACTIVEENGINEERING,
         ):
             return False
         states = self.detailed_states[
-            (Time(self.detailed_states.index) >= start)
-            & (Time(self.detailed_states.index) <= end)
+            (Time(self.detailed_states.index) >= start) & (Time(self.detailed_states.index) <= end)
         ]
         return (
             len(
@@ -259,9 +254,7 @@ class AccelerationAndVelocity:
             )
 
             ret.set_index(
-                pd.DatetimeIndex(
-                    Time(Time(ret["timestamp"], format="unix_tai"), scale="utc").isot
-                ),
+                pd.DatetimeIndex(Time(Time(ret["timestamp"], format="unix_tai"), scale="utc").isot),
                 inplace=True,
             )
             ret["timediff"] = ret["timestamp"].diff()
@@ -323,9 +316,7 @@ class AccelerationAndVelocity:
                     logging.debug(f"Found interval {start} - {end}")
                     ret.append((start, end))
                 else:
-                    logging.warning(
-                        f"Interval {start} - {end} " "mirror was not raised, ignoring."
-                    )
+                    logging.warning(f"Interval {start} - {end} mirror was not raised, ignoring.")
             else:
                 logging.warning(f"Short slew? {start} {end} {end - start}")
             start = index
@@ -351,9 +342,9 @@ class AccelerationAndVelocity:
         assert self.fitter is not None
 
         def vect_to_fam(row: pd.Series) -> pd.Series:
-            applied = self.force_calculator.velocity(
-                row.values[:3]
-            ) + self.force_calculator.acceleration(row.values[3:])
+            applied = self.force_calculator.velocity(row.values[:3]) + self.force_calculator.acceleration(
+                row.values[3:]
+            )
 
             return pd.Series(
                 [
@@ -370,14 +361,10 @@ class AccelerationAndVelocity:
                 + ["forceMagnitude"],
             )
 
-        acceleration_and_velocity = pd.concat(
-            [self.fitter.velocities, self.fitter.accelerations], axis=1
-        )
+        acceleration_and_velocity = pd.concat([self.fitter.velocities, self.fitter.accelerations], axis=1)
 
         logging.info("Calculating new mirror forces - backpropagation")
-        self.calculated_fam = acceleration_and_velocity.progress_apply(
-            vect_to_fam, axis=1
-        )
+        self.calculated_fam = acceleration_and_velocity.progress_apply(vect_to_fam, axis=1)
         self.calculated_fam.set_index(self.fitter.aav.index, inplace=True)
 
     async def load_gyroscope(self, start: Time, end: Time) -> None | pd.DataFrame:
@@ -408,9 +395,7 @@ class AccelerationAndVelocity:
             logging.debug("empty, ignored")
             return None
         ret.set_index(
-            pd.DatetimeIndex(
-                Time(Time(ret["timestamp"], format="unix_tai"), scale="utc").isot
-            ),
+            pd.DatetimeIndex(Time(Time(ret["timestamp"], format="unix_tai"), scale="utc").isot),
             inplace=True,
         )
         logging.debug(f"..OK ({len(ret.index)} records)")
@@ -463,9 +448,7 @@ class AccelerationAndVelocity:
             logging.debug("empty, ignored")
             return None
         ret.set_index(
-            pd.DatetimeIndex(
-                Time(Time(ret["timestamp"], format="unix_tai"), scale="utc").isot
-            ),
+            pd.DatetimeIndex(Time(Time(ret["timestamp"], format="unix_tai"), scale="utc").isot),
             inplace=True,
         )
         logging.debug(f"..OK ({len(ret.index)} records)")
@@ -520,9 +503,7 @@ class AccelerationAndVelocity:
             logging.debug("empty, ignored")
             return None
         ret.set_index(
-            pd.DatetimeIndex(
-                Time(Time(ret["timestamp"], format="unix_tai"), scale="utc").isot
-            ),
+            pd.DatetimeIndex(Time(Time(ret["timestamp"], format="unix_tai"), scale="utc").isot),
             inplace=True,
         )
         logging.debug(f"..OK ({len(ret.index)} records)")
@@ -548,16 +529,12 @@ class AccelerationAndVelocity:
             if hardpoints is None:
                 continue
             elevations_hardpoints = self.elevations[
-                (self.elevations.index >= block_start)
-                & (self.elevations.index <= block_end)
+                (self.elevations.index >= block_start) & (self.elevations.index <= block_end)
             ]
             azimuths_hardpoints = self.azimuths[
-                (self.azimuths.index >= block_start)
-                & (self.azimuths.index <= block_end)
+                (self.azimuths.index >= block_start) & (self.azimuths.index <= block_end)
             ]
-            data = hardpoints.join(
-                [azimuths_hardpoints, elevations_hardpoints], how="outer", sort=True
-            )
+            data = hardpoints.join([azimuths_hardpoints, elevations_hardpoints], how="outer", sort=True)
 
             self.raw = pd.concat([self.raw, data])
 
@@ -589,9 +566,7 @@ class AccelerationAndVelocity:
         applied = self.interpolated.progress_apply(fa_forces, axis=1)
         applied.set_index(self.interpolated.index, inplace=True)
 
-        self.mirror = self.interpolated.merge(
-            applied, how="left", left_index=True, right_index=True
-        )
+        self.mirror = self.interpolated.merge(applied, how="left", left_index=True, right_index=True)
         self.mirror.dropna(inplace=True)
         logging.info(f"Processing {len(self.mirror.index)} records")
 
@@ -820,9 +795,7 @@ class AccelerationAndVelocity:
             if hd5_debug is not None:
                 self.gyroscope.to_hdf(hd5_debug, key="gyroscope")
 
-            logging.info(
-                f"Gyroscope data retrieved, has {len(self.gyroscope.index)} rows."
-            )
+            logging.info(f"Gyroscope data retrieved, has {len(self.gyroscope.index)} rows.")
 
             self.raw = self.raw.merge(
                 self.gyroscope.rename(columns=lambda n: f"gyroscope_{n}"),
@@ -842,9 +815,7 @@ class AccelerationAndVelocity:
             if hd5_debug is not None:
                 self.accelerometers.to_hdf(hd5_debug, key="accelerometers")
 
-            logging.info(
-                f"Accelerometers data retrieved, has {len(self.accelerometers.index)} rows."
-            )
+            logging.info(f"Accelerometers data retrieved, has {len(self.accelerometers.index)} rows.")
 
             self.raw = self.raw.merge(
                 self.accelerometers.rename(columns=lambda n: f"accelerometers_{n}"),
@@ -972,9 +943,7 @@ class AccelerationAndVelocity:
                 reset_comments=True,
             )
         else:
-            self.force_calculator.save(
-                out_dir, f"Updated with slews {start_time.isot} - {end_time.isot}"
-            )
+            self.force_calculator.save(out_dir, f"Updated with slews {start_time.isot} - {end_time.isot}")
 
         logging.info(f"Saved new tables into {out_dir} directory")
 

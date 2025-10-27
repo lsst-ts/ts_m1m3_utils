@@ -92,7 +92,5 @@ class BumpTestTimesTestCase(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     if "RECORD_MODE" not in os.environ:
-        print(
-            f"To generate new cassettes with pre-downloaded data use: RECORD_MODE=all python {sys.argv[0]}"
-        )
+        print(f"To generate new cassettes with pre-downloaded data use: RECORD_MODE=all python {sys.argv[0]}")
     unittest.main()

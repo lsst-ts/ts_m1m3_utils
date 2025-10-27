@@ -170,9 +170,7 @@ class ThermocoupleAnalysis:
             for row in data.iterrows():
                 chunk = chunk_re.match(row[1]["sensorName"])
                 if chunk is None:
-                    raise RuntimeError(
-                        f"Unexpected sensorName for index {scanner}: {row[1]['sensorName']}"
-                    )
+                    raise RuntimeError(f"Unexpected sensorName for index {scanner}: {row[1]['sensorName']}")
                 chunk_index = int(chunk[1]) - 1
                 if chunk_index < len(chunks):
                     chunks[chunk_index].append(row)
@@ -188,9 +186,7 @@ class ThermocoupleAnalysis:
                     tc = find_thermocouple(scanner, chunk_index * 16 + i)
                     if tc is None:
                         if chunk_index == 0 and i == 0:
-                            chunk_data.rename(
-                                columns={name: f"coldJunction{scanner}"}, inplace=True
-                            )
+                            chunk_data.rename(columns={name: f"coldJunction{scanner}"}, inplace=True)
                         else:
                             to_drop.append(name)
                     else:
@@ -224,16 +220,12 @@ class ThermocoupleAnalysis:
         if not (scanner_dataframe.empty):
             # Remove the cold junction offset if desired
             if do_remove_cold_junction:
-                scanner_dataframe = self.__remove_cold_junction_gradient(
-                    scanner_dataframe
-                )
+                scanner_dataframe = self.__remove_cold_junction_gradient(scanner_dataframe)
 
             # Remove the individual thermocouple offset if desired
             if do_remove_offsets:
                 if do_remove_cold_junction:
-                    scanner_dataframe = self.__remove_offsets_after_cold_junction(
-                        scanner_dataframe
-                    )
+                    scanner_dataframe = self.__remove_offsets_after_cold_junction(scanner_dataframe)
                 else:
                     scanner_dataframe = self.__remove_offsets_alone(scanner_dataframe)
 
@@ -246,27 +238,21 @@ class ThermocoupleAnalysis:
             self.cold_junction_dataframe = scanner_dataframe[cold_junction_columns]
             if "coldJunctionMean" in scanner_dataframe.columns:
                 cold_junction_columns.append("coldJunctionMean")
-            self.all_thermocouples_dataframe = scanner_dataframe.drop(
-                columns=cold_junction_columns
-            )
+            self.all_thermocouples_dataframe = scanner_dataframe.drop(columns=cold_junction_columns)
 
             self.find_nonstandard_thermocouples()
 
             self.calculate_vertical_differences()
 
             self.xyz_r_gradients = self.calculate_gradients_xyz_r()
-            _, z_filtered = self.__coordinate_map(
-                make_3d_map=False, remove_nonstandard_cells=True
-            )
+            _, z_filtered = self.__coordinate_map(make_3d_map=False, remove_nonstandard_cells=True)
             self.mean_vertical_cell_gradient = z_filtered.mean(axis=1, skipna=True)
 
             self.bulk_glass_temperature_metrics = self.compute_temp_stats_and_rate(
                 data=self.all_thermocouples_dataframe,
             )
-            self.vertical_gradient_temperature_metrics = (
-                self.compute_temp_stats_and_rate(
-                    data=self.vertical_cell_gradient_dataframe
-                )
+            self.vertical_gradient_temperature_metrics = self.compute_temp_stats_and_rate(
+                data=self.vertical_cell_gradient_dataframe
             )
 
     def __remove_cold_junction_gradient(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -673,11 +659,9 @@ class ThermocoupleAnalysis:
         nonstandard_thermocouples: List[ThermocoupleData] = []
 
         for thermocouple in ThermocoupleTable:
-            nozzle_status = [
-                s.nozzle.value
-                for s in AirNozzleTable
-                if s.cell == thermocouple.core_location
-            ][0]
+            nozzle_status = [s.nozzle.value for s in AirNozzleTable if s.cell == thermocouple.core_location][
+                0
+            ]
             if nozzle_status in ["blocked", "sshort", "covered"]:
                 nonstandard_thermocouples.append(thermocouple)
 
@@ -735,12 +719,10 @@ class ThermocoupleAnalysis:
                                     the_thermocouple.y_position,
                                     (
                                         0.5
-                                        if the_thermocouple.name[-1]
-                                        == "M"  # last char “M”  → z = 0
+                                        if the_thermocouple.name[-1] == "M"  # last char “M”  → z = 0
                                         else (
                                             1
-                                            if the_thermocouple.name[-1]
-                                            == "F"  # last char “F”  → z = 0.5
+                                            if the_thermocouple.name[-1] == "F"  # last char “F”  → z = 0.5
                                             else 0
                                         )
                                     ),
@@ -765,12 +747,10 @@ class ThermocoupleAnalysis:
                                 the_thermocouple.y_position,
                                 (
                                     0.5
-                                    if the_thermocouple.name[-1]
-                                    == "M"  # last char “M”  → z = 0
+                                    if the_thermocouple.name[-1] == "M"  # last char “M”  → z = 0
                                     else (
                                         1
-                                        if the_thermocouple.name[-1]
-                                        == "F"  # last char “F”  → z = 0.5
+                                        if the_thermocouple.name[-1] == "F"  # last char “F”  → z = 0.5
                                         else 0
                                     )
                                 ),
@@ -805,7 +785,6 @@ class ThermocoupleAnalysis:
         result = {}
 
         if self.all_thermocouples_dataframe is not None:
-
             for col in self.all_thermocouples_dataframe.columns:
                 for b_suffix in b_suffixes:
                     if col.endswith(b_suffix):

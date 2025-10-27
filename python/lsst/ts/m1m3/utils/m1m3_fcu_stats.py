@@ -35,9 +35,7 @@ from .duration_time import DurationTime
 from .fcu_stats import FCUStats
 
 
-def plot_fcu_temperature(
-    df: pd.DataFrame, fcu_index: int, start_time: Time, end_time: Time
-) -> None:
+def plot_fcu_temperature(df: pd.DataFrame, fcu_index: int, start_time: Time, end_time: Time) -> None:
     """Plot the FCU temperature data from the DataFrame."""
     title = f"FCU{fcu_index} Temperature Data\n From {start_time.iso} to {end_time.iso}"
     fig, ax = plt.subplots(num=1, clear=True)
@@ -69,9 +67,7 @@ def parse_arguments() -> argparse.Namespace:
 
     now = Time.now()
 
-    parser = argparse.ArgumentParser(
-        description="Queries M1M3 Thermal System's FCU statistics."
-    )
+    parser = argparse.ArgumentParser(description="Queries M1M3 Thermal System's FCU statistics.")
     parser.add_argument(
         "start_time",
         type=DurationTime(now),
@@ -169,27 +165,23 @@ async def main() -> None:
     assert stats.data is not None
 
     for fcu in fcus:
-        rms = (
-            (stats.data[f"absoluteTemperature{fcu.index}"] - args.set_point) ** 2
-        ).mean() ** 0.5
+        rms = ((stats.data[f"absoluteTemperature{fcu.index}"] - args.set_point) ** 2).mean() ** 0.5
 
         statistics = stats.statistics[fcu.index]
         print(
             f"""
 FCU {fcu.name} (index={fcu.index}) Temperature Stats:
-    Min:       {statistics['min']:.3f} \u00b0C
-    Mean:      {statistics['mean']:.3f} \u00b0C
-    Median:    {statistics['median']:.3f} \u00b0C
-    Max:       {statistics['max']:.3f} \u00b0C
-    Std:       {statistics['std']:.3f} \u00b0C
+    Min:       {statistics["min"]:.3f} \u00b0C
+    Mean:      {statistics["mean"]:.3f} \u00b0C
+    Median:    {statistics["median"]:.3f} \u00b0C
+    Max:       {statistics["max"]:.3f} \u00b0C
+    Std:       {statistics["std"]:.3f} \u00b0C
     Set Point: {args.set_point:.3f} \u00b0C
     RMS:       {rms:.3f} \u00b0C"""
         )
 
         if args.show_url:
-            print(
-                f"  View the data in Chronograf:\n    {M1M3FCUStats(args.efd).url(start_t, end_t)}\n"
-            )
+            print(f"  View the data in Chronograf:\n    {M1M3FCUStats(args.efd).url(start_t, end_t)}\n")
 
         if args.plot:
             plot_fcu_temperature(stats.data, fcu.index, start_t, end_t)
