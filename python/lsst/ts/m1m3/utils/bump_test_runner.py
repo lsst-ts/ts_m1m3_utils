@@ -62,9 +62,7 @@ class BumpTestsList:
         self._tests = [] if actuators is None else actuators
 
     @staticmethod
-    def all_tests(
-        m1m3: Remote, skip: list[int] | None = None
-    ) -> list[ForceActuatorBumpTest]:
+    def all_tests(m1m3: Remote, skip: list[int] | None = None) -> list[ForceActuatorBumpTest]:
         """Return all tests for all enabled actuators minus actuators to skip.
 
         Parameters
@@ -85,9 +83,7 @@ class BumpTestsList:
 
         enabled = m1m3.evt_enabledForceActuators.get()
         if enabled is None:
-            raise RuntimeError(
-                "Cannot retrieve list of enabledForceActuators event. Exiting."
-            )
+            raise RuntimeError("Cannot retrieve list of enabledForceActuators event. Exiting.")
 
         tests = []
         for fa in FATable:
@@ -125,27 +121,18 @@ class BumpTestsList:
         """
         self._tests.append(test)
 
-    def contains(
-        self, actuator: ForceActuatorData, primary: bool | None = None
-    ) -> bool:
+    def contains(self, actuator: ForceActuatorData, primary: bool | None = None) -> bool:
         if primary is None:
-            return actuator.actuator_id in [
-                test.actuator.actuator_id for test in self._tests
-            ]
+            return actuator.actuator_id in [test.actuator.actuator_id for test in self._tests]
         return actuator.actuator_id in [
-            test.actuator.actuator_id
-            for test in self._tests
-            if test.is_primary() == primary
+            test.actuator.actuator_id for test in self._tests if test.is_primary() == primary
         ]
 
     def remove(self, actuator_id: int, primary: bool) -> ForceActuatorBumpTest | None:
         new_tests = []
         ret: ForceActuatorBumpTest | None = None
         for test in self._tests:
-            if (
-                test.actuator.actuator_id == actuator_id
-                and test.is_primary() == primary
-            ):
+            if test.actuator.actuator_id == actuator_id and test.is_primary() == primary:
                 if ret is not None:
                     raise RuntimeError(
                         f"Multiple instances of {actuator_id} primary {primary} in BumpTestsList!"
@@ -227,9 +214,7 @@ class BumpTestRunner:
         self._primary_test = [0] * FATABLE_ZFA
         self._secondary_test = [0] * (FATABLE_XFA + FATABLE_YFA)
 
-    async def next(
-        self, min_distance: float = 200, timeout: float = 10
-    ) -> ForceActuatorBumpTest | None:
+    async def next(self, min_distance: float = 200, timeout: float = 10) -> ForceActuatorBumpTest | None:
         """Return next FA to test.
 
         Parameters
@@ -254,11 +239,7 @@ class BumpTestRunner:
         """
         async with asyncio.timeout(timeout):
             while not self.todo.empty():
-                possible = [
-                    test
-                    for test in self.todo
-                    if self.running.distance(test.actuator) > min_distance
-                ]
+                possible = [test for test in self.todo if self.running.distance(test.actuator) > min_distance]
                 if len(possible) > 0:
                     picked = possible[0]
                     self.running.append(picked)
@@ -315,9 +296,7 @@ class BumpTestRunner:
             if changed:
                 self.progress(fa, primary, secondary)
 
-    def progress(
-        self, actuator: ForceActuatorData, primary: int, secondary: int | None
-    ) -> None:
+    def progress(self, actuator: ForceActuatorData, primary: int, secondary: int | None) -> None:
         """React to bump test progress of the given force actuator. If the test
         finishes, move the test record from running into either passed or
         failed lists.

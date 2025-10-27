@@ -54,20 +54,10 @@ class ThermocouplesTestCase(unittest.IsolatedAsyncioTestCase):
         assert len(self.tc_analysis.all_thermocouples_dataframe.index) == 60
 
         for tc in ThermocoupleTable:
-            assert (
-                8 <= self.tc_analysis.all_thermocouples_dataframe[tc.name].mean() <= 10
-            )
-            assert (
-                425
-                <= self.tc_analysis.all_thermocouples_dataframe[tc.name].sum()
-                <= 580
-            )
-            assert (
-                8 <= self.tc_analysis.all_thermocouples_dataframe[tc.name].min() <= 9.5
-            )
-            assert (
-                8.7 <= self.tc_analysis.all_thermocouples_dataframe[tc.name].max() <= 10
-            )
+            assert 8 <= self.tc_analysis.all_thermocouples_dataframe[tc.name].mean() <= 10
+            assert 425 <= self.tc_analysis.all_thermocouples_dataframe[tc.name].sum() <= 580
+            assert 8 <= self.tc_analysis.all_thermocouples_dataframe[tc.name].min() <= 9.5
+            assert 8.7 <= self.tc_analysis.all_thermocouples_dataframe[tc.name].max() <= 10
 
             diff = self.tc_analysis.all_thermocouples_dataframe.index.diff()
             assert diff[0] is pd.NaT
@@ -110,16 +100,10 @@ class ThermocouplesTestCase(unittest.IsolatedAsyncioTestCase):
 
         assert len(self.tc_analysis.bulk_glass_temperature_metrics.index) == 12
 
-        assert (
-            8.9
-            <= self.tc_analysis.bulk_glass_temperature_metrics.mean_temp.iloc[0]
-            <= 9
-        )
+        assert 8.9 <= self.tc_analysis.bulk_glass_temperature_metrics.mean_temp.iloc[0] <= 9
 
 
 if __name__ == "__main__":
     if "RECORD_MODE" not in os.environ:
-        print(
-            f"To generate new cassettes with pre-downloaded data use: RECORD_MODE=all python {sys.argv[0]}"
-        )
+        print(f"To generate new cassettes with pre-downloaded data use: RECORD_MODE=all python {sys.argv[0]}")
     unittest.main()

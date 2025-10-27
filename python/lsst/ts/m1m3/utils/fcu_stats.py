@@ -84,6 +84,4 @@ class FCUStats:
 
         for fcu_index in fcu_indices:
             col = f"absoluteTemperature{fcu_index}"
-            self.statistics[fcu_index] = self.data[col].agg(
-                ["min", "mean", "median", "max", "std"]
-            )
+            self.statistics[fcu_index] = self.data[col].agg(["min", "mean", "median", "max", "std"])

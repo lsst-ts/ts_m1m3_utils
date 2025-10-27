@@ -124,9 +124,7 @@ async def run_loop() -> None:
         return
 
     for t in args.topics:
-        data = await client.select_time_series(
-            "lsst.sal." + t, "*", start_t, end_t, index=args.index
-        )
+        data = await client.select_time_series("lsst.sal." + t, "*", start_t, end_t, index=args.index)
 
         if data.empty:
             print(f"No data found for '{t}' between {start_t.isot} and {end_t.isot}.")

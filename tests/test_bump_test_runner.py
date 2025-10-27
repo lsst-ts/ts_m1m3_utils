@@ -29,9 +29,7 @@ from lsst.ts.xml.tables.m1m3 import FATable
 class ForceActuatorBumpTestTestCase(unittest.IsolatedAsyncioTestCase):
     def test_primary(self) -> None:
         self.assertEqual(
-            ForceActuatorBumpTest(
-                FATable[0], BumpTestKind.CYLINDER_PRIMARY
-            ).is_primary(),
+            ForceActuatorBumpTest(FATable[0], BumpTestKind.CYLINDER_PRIMARY).is_primary(),
             True,
         )
 
@@ -49,9 +47,7 @@ class BumpTestRunnerTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(test.actuator.actuator_id, 102)
         self.assertEqual(test.kind, BumpTestKind.AXIS_Z)
 
-        runner.progress(
-            FATable[1], BumpTest.FAILED_TESTEDPOSITIVE_OVERSHOOT, BumpTest.TRIGGERED
-        )
+        runner.progress(FATable[1], BumpTest.FAILED_TESTEDPOSITIVE_OVERSHOOT, BumpTest.TRIGGERED)
 
         test = await runner.next()
         self.assertEqual(test.actuator.actuator_id, 102)

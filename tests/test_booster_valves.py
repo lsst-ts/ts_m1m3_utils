@@ -47,33 +47,23 @@ class BoosterValvesTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_booster_valves(self) -> None:
         self.bv = BoosterValves(self.client)
         with myvcr.use_cassette("booster_valves.yaml"):
-            ret = await self.get_tests(
-                Time("2024-01-10 01:00:00"), Time("2024-01-10 02:00:00")
-            )
+            ret = await self.get_tests(Time("2024-01-10 01:00:00"), Time("2024-01-10 02:00:00"))
             assert len(ret) == 58
 
-            ret = await self.get_tests(
-                Time("2024-01-10 00:00:00"), Time("2024-01-10 10:00:00")
-            )
+            ret = await self.get_tests(Time("2024-01-10 00:00:00"), Time("2024-01-10 10:00:00"))
             assert len(ret) == 432
 
     async def test_booster_diff(self) -> None:
         with myvcr.use_cassette("booster_diff.yaml"):
             self.bv = BoosterValves(self.client, TimeDelta(3600, format="sec"))
-            ret = await self.get_tests(
-                Time("2024-01-10 01:00:00"), Time("2024-01-10 02:00:00")
-            )
+            ret = await self.get_tests(Time("2024-01-10 01:00:00"), Time("2024-01-10 02:00:00"))
             assert len(ret) == 58
 
-            ret = await self.get_tests(
-                Time("2024-01-10 00:00:00"), Time("2024-01-10 10:00:00")
-            )
+            ret = await self.get_tests(Time("2024-01-10 00:00:00"), Time("2024-01-10 10:00:00"))
             assert len(ret) == 432
 
 
 if __name__ == "__main__":
     if "RECORD_MODE" not in os.environ:
-        print(
-            f"To generate new cassettes with pre-downloaded data use: RECORD_MODE=all python {sys.argv[0]}"
-        )
+        print(f"To generate new cassettes with pre-downloaded data use: RECORD_MODE=all python {sys.argv[0]}")
     unittest.main()

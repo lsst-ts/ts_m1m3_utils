@@ -119,9 +119,7 @@ class ForceTable:
         try:
             self.data = pd.read_csv(filename, comment="#")
             if len(self.data.index) != rows:
-                raise RuntimeError(
-                    f"Expected {rows} in {filename}, found {len(self.data.index)}."
-                )
+                raise RuntimeError(f"Expected {rows} in {filename}, found {len(self.data.index)}.")
 
             self.comments = []
             with open(filename, "r") as f:
@@ -136,9 +134,7 @@ class ForceTable:
 
         return self
 
-    def save(
-        self, csv: pathlib.Path, comments: list[str], reset_comments: bool
-    ) -> None:
+    def save(self, csv: pathlib.Path, comments: list[str], reset_comments: bool) -> None:
         """Save comments and data to CSV file.
 
         Parameters
@@ -512,9 +508,7 @@ class ForceCalculator:
         """
         return ForceCalculator.AppliedForces(x_forces, y_forces, z_forces, self.fas)
 
-    def get_applied_forces_from_mirror(
-        self, forces: list[list[float]]
-    ) -> AppliedForces:
+    def get_applied_forces_from_mirror(self, forces: list[list[float]]) -> AppliedForces:
         """Return ForceCalculator.AppliedForces from mirror forces. Each passed
         array shall have length equal to FATABLE_ZFA (156).
 
@@ -675,9 +669,7 @@ class ForceCalculator:
                 ).T
             )
             self._acceleration_computation.append(
-                pd.DataFrame(
-                    [(t.data[axis] / 1000.0) for t in self.acceleration_tables]
-                ).T
+                pd.DataFrame([(t.data[axis] / 1000.0) for t in self.acceleration_tables]).T
             )
             self._velocity_computation.append(
                 pd.DataFrame([(t.data[axis] / 1000.0) for t in self.velocity_tables]).T
@@ -696,9 +688,7 @@ class ForceCalculator:
         elevation_forces: AppliedForces
             Calculated elevation forces
         """
-        return self.get_applied_forces_from_mirror(
-            [list(et(90 - elevation)) for et in self.elevation_tables]
-        )
+        return self.get_applied_forces_from_mirror([list(et(90 - elevation)) for et in self.elevation_tables])
 
     def hardpoint_forces_and_moments(self, hardpoints: list[float]) -> pd.DataFrame:
         return self.hardpoint_to_forces_moments.data @ hardpoints
@@ -711,9 +701,7 @@ class ForceCalculator:
         return self.get_applied_forces_from_mirror(forces)
 
     def hardpoint_forces(self, hardpoints: list[float]) -> AppliedForces:
-        return self.forces_and_moments_forces(
-            self.hardpoint_forces_and_moments(hardpoints).values
-        )
+        return self.forces_and_moments_forces(self.hardpoint_forces_and_moments(hardpoints).values)
 
     def acceleration(self, accelerations: list[float]) -> AppliedForces:
         """Calculates acceleration forces.

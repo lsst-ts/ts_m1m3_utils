@@ -52,20 +52,14 @@ class BoosterValves:
         self.cache_delta = cache_delta
         self.cache: pd.DataFrame | None = None
 
-    async def find_opened(
-        self, start: Time, end: Time
-    ) -> AsyncGenerator[BoosterValveOpened, None]:
+    async def find_opened(self, start: Time, end: Time) -> AsyncGenerator[BoosterValveOpened, None]:
         query_start = start
 
         self.cache = None
         period_start: Time | None = None
 
         while query_start < end:
-            if (
-                self.cache is None
-                or len(self.cache.index) == 0
-                or Time(self.cache.index[0]) < query_start
-            ):
+            if self.cache is None or len(self.cache.index) == 0 or Time(self.cache.index[0]) < query_start:
                 query_end = min(query_start + self.cache_delta, end)
                 logging.info(
                     "Quering %s - %s for booster valve activation.",
