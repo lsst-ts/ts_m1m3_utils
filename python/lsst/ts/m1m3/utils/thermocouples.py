@@ -31,6 +31,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 from astropy.time import Time
+from lsst.ts.xml.enums.MTM1M3TS import AirNozzle
 from lsst.ts.xml.tables.m1m3 import (
     AirNozzleTable,
     Scanner,
@@ -656,16 +657,12 @@ class ThermocoupleAnalysis:
         """Make a list of all thermocouples with nonstandard
         air nozzle configurations in their cells.
         """
-        nonstandard_thermocouples: List[ThermocoupleData] = []
+        self.nonstandard_thermocouples = []
 
         for thermocouple in ThermocoupleTable:
-            nozzle_status = [s.nozzle.value for s in AirNozzleTable if s.cell == thermocouple.core_location][
-                0
-            ]
-            if nozzle_status in ["blocked", "sshort", "covered"]:
-                nonstandard_thermocouples.append(thermocouple)
-
-        self.nonstandard_thermocouples = nonstandard_thermocouples
+            nozzle_status = [s.nozzle for s in AirNozzleTable if s.cell == thermocouple.core_location]
+            if nozzle_status[0] in [AirNozzle.BLOCKED, AirNozzle.SUPER_SHORT, AirNozzle.COVERED]:
+                self.nonstandard_thermocouples.append(thermocouple)
 
     def __coordinate_map(
         self,
