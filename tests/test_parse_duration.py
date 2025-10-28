@@ -33,31 +33,16 @@ class ParseDurationTestCase(unittest.TestCase):
         assert parse_duration("1 ") == TimeDelta(1, format="sec")
         assert parse_duration(" 1") == TimeDelta(1, format="sec")
         assert parse_duration(" 1 D ") == TimeDelta(86400, format="sec")
-        assert parse_duration("2h3m6s") == TimeDelta(
-            2 * 3600 + 3 * 60 + 6, format="sec"
-        )
-        assert parse_duration(" 10h 67   m 12345s") == TimeDelta(
-            10 * 3600 + 67 * 60 + 12345, format="sec"
-        )
-        assert parse_duration(" 10h 67   m 12345") == TimeDelta(
-            10 * 3600 + 67 * 60 + 12345, format="sec"
-        )
+        assert parse_duration("2h3m6s") == TimeDelta(2 * 3600 + 3 * 60 + 6, format="sec")
+        assert parse_duration(" 10h 67   m 12345s") == TimeDelta(10 * 3600 + 67 * 60 + 12345, format="sec")
+        assert parse_duration(" 10h 67   m 12345") == TimeDelta(10 * 3600 + 67 * 60 + 12345, format="sec")
         assert parse_duration("125u735n") == TimeDelta(0.125735, format="sec")
 
     def test_duration_time(self) -> None:
-        assert (
-            DurationTime(Time("2020-01-01T10:20"))("2m").isot
-            == Time("2020-01-01T10:22").isot
-        )
-        assert (
-            DurationTime(Time("2020-12-31T23:59"))("2m").isot
-            == Time("2021-01-01T00:01").isot
-        )
+        assert DurationTime(Time("2020-01-01T10:20"))("2m").isot == Time("2020-01-01T10:22").isot
+        assert DurationTime(Time("2020-12-31T23:59"))("2m").isot == Time("2021-01-01T00:01").isot
 
-        assert (
-            DurationTime(Time("1987-01-01T00:59"))("-59m1s").isot
-            == Time("1986-12-31T23:59:59").isot
-        )
+        assert DurationTime(Time("1987-01-01T00:59"))("-59m1s").isot == Time("1986-12-31T23:59:59").isot
 
         assert (
             DurationTime(Time("1986-04-26T01:23:47.53"))("-10430D5h55m36.53s").isot
@@ -69,9 +54,7 @@ class ParseDurationTestCase(unittest.TestCase):
         math.isclose(TimeDelta(Time.now() - td, format="sec").value, 0, abs_tol=1e-5)
 
         td = DurationTime(Time("1978-01-01T23:59:10"))("yesterday")
-        math.isclose(
-            TimeDelta(Time.now() - td, format="sec").value, 86400, abs_tol=1e-5
-        )
+        math.isclose(TimeDelta(Time.now() - td, format="sec").value, 86400, abs_tol=1e-5)
 
     def test_atomic_time(self) -> None:
         td = DurationTime(Time("1985-03-04T12:33:44"))("2023-04-01A23:12:12.23")

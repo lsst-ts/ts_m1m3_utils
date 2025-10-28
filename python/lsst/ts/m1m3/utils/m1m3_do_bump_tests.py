@@ -44,9 +44,7 @@ def parse_arguments() -> argparse.Namespace:
         dest="skip",
         help="Actuators to skip.",
     )
-    parser.add_argument(
-        "--timeout", default=20.0, type=float, help="Timeout for async calls in tests."
-    )
+    parser.add_argument("--timeout", default=20.0, type=float, help="Timeout for async calls in tests.")
     parser.add_argument(
         "-d",
         default=False,
@@ -74,9 +72,7 @@ async def do_tests(m1m3: Remote, timeout: float, serial: bool, skip: list[int]) 
     """
     runner = BumpTestRunner(BumpTestsList.all_tests(m1m3, skip))
 
-    m1m3.evt_forceActuatorBumpTestStatus.callback = (
-        runner.force_actuator_bump_test_status
-    )
+    m1m3.evt_forceActuatorBumpTestStatus.callback = runner.force_actuator_bump_test_status
 
     distance = 10
     if not (serial):
@@ -89,9 +85,7 @@ async def do_tests(m1m3: Remote, timeout: float, serial: bool, skip: list[int]) 
 
         primary = test.is_primary()
 
-        print(
-            f"Starting test on {test.actuator.actuator_id} - {'primary' if primary else 'secondary'}"
-        )
+        print(f"Starting test on {test.actuator.actuator_id} - {'primary' if primary else 'secondary'}")
 
         await m1m3.cmd_forceActuatorBumpTest.set_start(
             actuatorId=test.actuator.actuator_id,

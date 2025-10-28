@@ -128,9 +128,7 @@ class DurationTime(Time):
         return self.base_time is None
 
     @staticmethod
-    def pair(
-        t1: "DurationTime", t2: "DurationTime"
-    ) -> tuple["DurationTime", "DurationTime"]:
+    def pair(t1: "DurationTime", t2: "DurationTime") -> tuple["DurationTime", "DurationTime"]:
         """Check for absolute times among input times, and produces pair of
         output times. Usefull to produce pair of start and end times parsed
         from command line, when one can be delta time.

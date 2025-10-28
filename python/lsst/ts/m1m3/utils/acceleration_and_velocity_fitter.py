@@ -42,9 +42,7 @@ class AccelerationAndVelocityFitter:
         accelerometer, or actual or demand for TMA. Meters are preferred.
     """
 
-    def __init__(
-        self, values: pd.DataFrame, velocity_kind: str, acceleration_kind: str
-    ):
+    def __init__(self, values: pd.DataFrame, velocity_kind: str, acceleration_kind: str):
         D2RAD = np.radians(1)
 
         if velocity_kind == "meters":
@@ -79,20 +77,14 @@ class AccelerationAndVelocityFitter:
                 }
             )
         else:
-            el_sin = np.sin(
-                np.radians(values[f"elevation_{acceleration_kind}Position"])
-            )
-            el_cos = np.cos(
-                np.radians(values[f"elevation_{acceleration_kind}Position"])
-            )
+            el_sin = np.sin(np.radians(values[f"elevation_{acceleration_kind}Position"]))
+            el_cos = np.cos(np.radians(values[f"elevation_{acceleration_kind}Position"]))
 
             A_azimuth = values[f"azimuth_{acceleration_kind}Acceleration"].mul(D2RAD)
 
             self.accelerations = pd.DataFrame(
                 {
-                    "X": values[f"elevation_{acceleration_kind}Acceleration"].mul(
-                        D2RAD
-                    ),
+                    "X": values[f"elevation_{acceleration_kind}Acceleration"].mul(D2RAD),
                     "Y": A_azimuth.mul(el_cos),
                     "Z": A_azimuth.mul(el_sin),
                 }
@@ -143,8 +135,6 @@ class AccelerationAndVelocityFitter:
             + [f"Z{z}" for z in range(FATABLE_ZFA)]
         ):
             B = mirror_forces[fa] * -1000.0
-            coefficients[fa], residuals[fa], rank, s = np.linalg.lstsq(
-                self.aav, B, rcond=None
-            )
+            coefficients[fa], residuals[fa], rank, s = np.linalg.lstsq(self.aav, B, rcond=None)
 
         return (pd.DataFrame(coefficients), pd.DataFrame(residuals))

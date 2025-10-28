@@ -125,23 +125,17 @@ async def run_loop() -> None:
             if args.details:
                 faf = ForceActuatorForces(test.start_time, test.end_time, client)
                 fa_fe = await faf.actuator_following_error(actuator)
-                print(
-                    f"Following errors min: {fa_fe.primary.min():.3f} N "
-                    f"max: {fa_fe.secondary.max():.3f} N"
-                )
+                print(f"Following errors min: {fa_fe.primary.min():.3f} N max: {fa_fe.secondary.max():.3f} N")
                 following_errors = await faf.following_errors()
                 flat_fe = following_errors.values.reshape(-1)
-                print(
-                    f"All following errors min: {flat_fe.min():.3f} N "
-                    f"max {flat_fe.max():.3f} N"
-                )
+                print(f"All following errors min: {flat_fe.min():.3f} N max {flat_fe.max():.3f} N")
 
         print(sty.fg.yellow, "Primary bump tests - FA", actuator.actuator_id, sty.bg.rs)
         async for bump in btt.find_times(actuator, True, start_t, end_t):
             await print_bump(bump)
 
         if actuator.s_index is not None:
-            print(sty.bg.blue, "\u25A9" * 50, sty.bg.rs)
+            print(sty.bg.blue, "\u25a9" * 50, sty.bg.rs)
             print(
                 sty.fg.yellow,
                 "Secondary bump tests - FA",

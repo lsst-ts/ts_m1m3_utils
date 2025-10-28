@@ -62,9 +62,7 @@ class TestFAs(unittest.IsolatedAsyncioTestCase):
         )
 
         assert (
-            usdf.fa_url(
-                Time("2025-06-12T12:31:12"), Time("2025-06-12T13:45:11"), FATable[2]
-            )
+            usdf.fa_url(Time("2025-06-12T12:31:12"), Time("2025-06-12T13:45:11"), FATable[2])
             == "https://usdf-rsp.slac.stanford.edu/chronograf/sources/1/dashboards/61?refresh=Paused"
             "&lower=2025-06-12T12%3A31%3A12.000Z&upper=2025-06-12T13%3A45%3A11.000Z"
             "&tempVars%5Bx_index%5D=0&tempVars%5By_index%5D=103&tempVars%5Bs_index%5D=103"

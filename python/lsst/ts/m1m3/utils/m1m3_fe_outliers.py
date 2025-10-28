@@ -83,16 +83,12 @@ def parse_arguments(now: Time) -> argparse.Namespace:
 async def query_fa_errors(
     client: EfdClient, actuators: list[int], start_t: Time, end_t: Time, toplist: int
 ) -> None:
-    logging.info(
-        "Quering following errors - %s to %s.", start_t.utc.isot, end_t.utc.isot
-    )
+    logging.info("Quering following errors - %s to %s.", start_t.utc.isot, end_t.utc.isot)
 
     forces = await ForceActuatorForces(client, start_t, end_t).following_errors()
 
     if forces.empty:
-        logging.info(
-            "Following errors not found - %s to %s", start_t.utc.isot, end_t.utc.isot
-        )
+        logging.info("Following errors not found - %s to %s", start_t.utc.isot, end_t.utc.isot)
         return
 
     tested = []
@@ -146,9 +142,7 @@ async def run_loop() -> None:
     if args.booster_active:
         bv = BoosterValves(client)
         async for ba in bv.find_opened(start_t, end_t):
-            await query_fa_errors(
-                client, args.actuators, ba.start, ba.end, args.toplist
-            )
+            await query_fa_errors(client, args.actuators, ba.start, ba.end, args.toplist)
     else:
         await query_fa_errors(client, args.actuators, start_t, end_t, args.toplist)
 
@@ -156,5 +150,4 @@ async def run_loop() -> None:
 
 
 def run() -> None:
-
     asyncio.run(run_loop())

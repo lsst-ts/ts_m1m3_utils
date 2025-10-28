@@ -26,9 +26,10 @@ import unittest
 import pandas as pd
 import vcr
 from astropy.time import Time, TimeDelta
-from lsst.ts.m1m3.utils import thermocouples
-from lsst.ts.xml.tables.m1m3 import ThermocoupleTable
+from lsst.ts.m1m3.utils import ThermocoupleAnalysis
+from lsst.ts.xml.tables.m1m3 import ThermocoupleTable, set_air_nozzles_types
 from lsst_efd_client import EfdClient
+from mock_nozzle import MockNozzle
 
 CASSETTE_DIR = os.path.join(os.path.dirname(__file__), "cassettes")
 
@@ -42,41 +43,70 @@ myvcr = vcr.VCR(
 class ThermocouplesTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.client = EfdClient("usdf_efd")
+        self.tc_analysis = ThermocoupleAnalysis(self.client)
 
     async def test_load(self) -> None:
         start = Time("2025-08-25T18:00:00")
         end = start + TimeDelta(3600, format="sec")
 
         with myvcr.use_cassette("thermocouples_test_load.yaml"):
-            data = await thermocouples.get_scanner_data(self.client, start, end)
+            await self.tc_analysis.load(start, end)
 
-        assert len(data.index) == 120
+        assert len(self.tc_analysis.all_thermocouples_dataframe.index) == 60
 
         for tc in ThermocoupleTable:
-            assert 8 <= data[tc.name].mean() <= 10
-            assert 950 <= data[tc.name].sum() <= 1100
-            assert 8 <= data[tc.name].min() <= 9.5
-            assert 8.7 <= data[tc.name].max() <= 10
+            assert 8 <= self.tc_analysis.all_thermocouples_dataframe[tc.name].mean() <= 10
+            assert 425 <= self.tc_analysis.all_thermocouples_dataframe[tc.name].sum() <= 580
+            assert 8 <= self.tc_analysis.all_thermocouples_dataframe[tc.name].min() <= 9.5
+            assert 8.7 <= self.tc_analysis.all_thermocouples_dataframe[tc.name].max() <= 10
 
-            diff = data.index.diff()
+            diff = self.tc_analysis.all_thermocouples_dataframe.index.diff()
             assert diff[0] is pd.NaT
 
             diff = diff[1:]
-            assert len(diff[diff != pd.Timedelta("00:00:30")]) == 0
+            assert len(diff[diff != pd.Timedelta("00:01:00")]) == 0
 
     async def test_empty(self) -> None:
         start = Time("2025-08-21T18:00:30")
         end = start + TimeDelta(1800, format="sec")
 
         with myvcr.use_cassette("thermocouples_test_empty.yaml"):
-            data = await thermocouples.get_scanner_data(self.client, start, end)
+            await self.tc_analysis.load(start, end)
 
-        assert data.empty
+        assert self.tc_analysis.all_thermocouples_dataframe is None
+
+    async def test_gradients(self) -> None:
+        start = Time("2025-08-25T18:00:00")
+        end = start + TimeDelta(3600, format="sec")
+
+        set_air_nozzles_types(MockNozzle)
+
+        with myvcr.use_cassette("thermocouples_test_load.yaml"):
+            await self.tc_analysis.load(start, end, time_bin=300)
+
+        assert len(self.tc_analysis.nonstandard_thermocouples) == 4
+
+        assert len(self.tc_analysis.all_thermocouples_dataframe.index) == 12
+
+        assert len(self.tc_analysis.vertical_cell_gradient_dataframe.index) == 12
+
+        assert 0.2 <= self.tc_analysis.mean_vertical_cell_gradient.iloc[0] <= 0.22
+
+        assert -0.02 <= self.tc_analysis.xyz_r_gradients.x_gradient.iloc[0] <= 0.02
+
+    async def test_bulk_metrics(self) -> None:
+        start = Time("2025-08-25T18:00:00")
+        end = start + TimeDelta(3600, format="sec")
+
+        with myvcr.use_cassette("thermocouples_test_load.yaml"):
+            await self.tc_analysis.load(start, end, time_bin=300)
+
+        assert len(self.tc_analysis.bulk_glass_temperature_metrics.index) == 12
+
+        assert 8.9 <= self.tc_analysis.bulk_glass_temperature_metrics.mean_temp.iloc[0] <= 9
 
 
 if __name__ == "__main__":
     if "RECORD_MODE" not in os.environ:
-        print(
-            f"To generate new cassettes with pre-downloaded data use: RECORD_MODE=all python {sys.argv[0]}"
-        )
+        print(f"To generate new cassettes with pre-downloaded data use: RECORD_MODE=all python {sys.argv[0]}")
     unittest.main()

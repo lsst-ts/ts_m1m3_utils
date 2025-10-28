@@ -47,9 +47,7 @@ class ForceActuatorForces:
         self.start = start
         self.end = end
 
-    async def actuator_following_error(
-        self, actuator: ForceActuatorData
-    ) -> pd.DataFrame:
+    async def actuator_following_error(self, actuator: ForceActuatorData) -> pd.DataFrame:
         """Find following error for a single FA.
 
         Parameters
@@ -82,9 +80,7 @@ class ForceActuatorForces:
         following_errors: pd.DataFrame
         """
         fields = [f"primaryCylinderFollowingError{fa.index}" for fa in FATable] + [
-            f"secondaryCylinderFollowingError{fa.s_index}"
-            for fa in FATable
-            if fa.s_index is not None
+            f"secondaryCylinderFollowingError{fa.s_index}" for fa in FATable if fa.s_index is not None
         ]
 
         return await self.client.select_time_series(
@@ -117,9 +113,7 @@ class ForceActuatorForces:
 
     async def cylinder_forces(self) -> pd.DataFrame:
         fields = [f"primaryCylinderForce{fa.index}" for fa in FATable] + [
-            f"secondaryCylinderForce{fa.s_index}"
-            for fa in FATable
-            if fa.s_index is not None
+            f"secondaryCylinderForce{fa.s_index}" for fa in FATable if fa.s_index is not None
         ]
 
         return await self.client.select_time_series(

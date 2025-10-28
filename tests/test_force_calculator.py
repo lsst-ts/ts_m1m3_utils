@@ -32,9 +32,7 @@ class ForceCalculatorTestCase(unittest.TestCase):
     """Tests ForceCalculator."""
 
     def setUp(self) -> None:
-        self.calculator = ForceCalculator(
-            pathlib.Path(os.path.dirname(os.path.abspath(__file__))) / "data"
-        )
+        self.calculator = ForceCalculator(pathlib.Path(os.path.dirname(os.path.abspath(__file__))) / "data")
 
     def test_appliedForces(self) -> None:
         a = self.calculator.get_applied_forces(
@@ -52,9 +50,7 @@ class ForceCalculatorTestCase(unittest.TestCase):
         self.assertAlmostEqual(a.mz, -212.0001997679999)
 
     def test_cylinderForces(self) -> None:
-        a = ForceCalculator.CylinderForces(
-            [1] * FATABLE_ZFA, [2] * (FATABLE_XFA + FATABLE_YFA)
-        )
+        a = ForceCalculator.CylinderForces([1] * FATABLE_ZFA, [2] * (FATABLE_XFA + FATABLE_YFA))
 
         RECIPROCAL_SQRT2 = 0.70710678118654752440084436210485
 
@@ -90,31 +86,19 @@ class ForceCalculatorTestCase(unittest.TestCase):
         self.assertAlmostEqual(a.forceMagnitude, 340.250317742)
 
     def test_hardpoints(self) -> None:
-        fam = self.calculator.hardpoint_forces_and_moments(
-            [100, -100, 200, -200, 300, -300]
-        )
+        fam = self.calculator.hardpoint_forces_and_moments([100, -100, 200, -200, 300, -300])
         np.testing.assert_array_equal(fam, [-600, -600, 100, -100, -200, -100])
 
     def test_distribute_forces(self) -> None:
-        forces = self.calculator.forces_and_moments_forces(
-            [-100, 200, -300, 400, -500, 600]
-        )
-        np.testing.assert_array_equal(
-            forces.xForces, [0, 300] + [0] * (FATABLE_XFA - 2)
-        )
+        forces = self.calculator.forces_and_moments_forces([-100, 200, -300, 400, -500, 600])
+        np.testing.assert_array_equal(forces.xForces, [0, 300] + [0] * (FATABLE_XFA - 2))
 
-        forces = self.calculator.forces_and_moments_forces(
-            [-600, -600, 100, -100, -200, -100]
-        )
-        np.testing.assert_array_equal(
-            forces.xForces, [0, -700] + [0] * (FATABLE_XFA - 2)
-        )
+        forces = self.calculator.forces_and_moments_forces([-600, -600, 100, -100, -200, -100])
+        np.testing.assert_array_equal(forces.xForces, [0, -700] + [0] * (FATABLE_XFA - 2))
 
     def test_hardpoint_forces(self) -> None:
         forces = self.calculator.hardpoint_forces([100, -100, 200, -200, 300, -300])
-        np.testing.assert_array_equal(
-            forces.xForces, [0, -700] + [0] * (FATABLE_XFA - 2)
-        )
+        np.testing.assert_array_equal(forces.xForces, [0, -700] + [0] * (FATABLE_XFA - 2))
 
     def test_acceleration(self) -> None:
         acceleration = self.calculator.acceleration([0, 0, 0])
@@ -125,9 +109,7 @@ class ForceCalculatorTestCase(unittest.TestCase):
 
         acceleration = self.calculator.acceleration([1, 0, 0])
 
-        np.testing.assert_array_equal(
-            acceleration.xForces, [0, 1] + [0] * (FATABLE_XFA - 3) + [2]
-        )
+        np.testing.assert_array_equal(acceleration.xForces, [0, 1] + [0] * (FATABLE_XFA - 3) + [2])
         np.testing.assert_array_equal(acceleration.yForces, [0] * FATABLE_YFA)
         np.testing.assert_array_equal(acceleration.zForces, [0] * FATABLE_ZFA)
 
@@ -140,12 +122,8 @@ class ForceCalculatorTestCase(unittest.TestCase):
 
         velocity = self.calculator.velocity([1, 2, 3])
 
-        np.testing.assert_array_equal(
-            velocity.xForces, [0, 52] + [0] * (FATABLE_XFA - 3) + [18]
-        )
-        np.testing.assert_array_equal(
-            velocity.yForces, [18, 0, 0, 4] + [0] * (FATABLE_YFA - 5) + [15]
-        )
+        np.testing.assert_array_equal(velocity.xForces, [0, 52] + [0] * (FATABLE_XFA - 3) + [18])
+        np.testing.assert_array_equal(velocity.yForces, [18, 0, 0, 4] + [0] * (FATABLE_YFA - 5) + [15])
         np.testing.assert_array_equal(
             velocity.zForces,
             [0, 14.4, 0, 0, 6] + [0] * (FATABLE_ZFA - 11) + [9, 0, 0, 0, 0, 21],
@@ -158,12 +136,8 @@ class ForceCalculatorTestCase(unittest.TestCase):
 
         forces = velocity + acceleration
 
-        np.testing.assert_array_equal(
-            forces.xForces, [0, 53] + [0] * (FATABLE_XFA - 3) + [20]
-        )
-        np.testing.assert_array_equal(
-            forces.yForces, [18, 0, 0, 4] + [0] * (FATABLE_YFA - 5) + [15]
-        )
+        np.testing.assert_array_equal(forces.xForces, [0, 53] + [0] * (FATABLE_XFA - 3) + [20])
+        np.testing.assert_array_equal(forces.yForces, [18, 0, 0, 4] + [0] * (FATABLE_YFA - 5) + [15])
         np.testing.assert_array_equal(
             forces.zForces,
             [0, 14.4, 0, 0, 6] + [0] * (FATABLE_ZFA - 11) + [9, 0, 0, 0, 0, 21],
@@ -183,9 +157,7 @@ class ForceCalculatorTestCase(unittest.TestCase):
                 assert f.zForces[fa.index] == 0
 
     def test_near_neighbors(self) -> None:
-        a = self.calculator.get_applied_forces(
-            [5] * FATABLE_XFA, [6] * FATABLE_YFA, [7] * FATABLE_ZFA
-        )
+        a = self.calculator.get_applied_forces([5] * FATABLE_XFA, [6] * FATABLE_YFA, [7] * FATABLE_ZFA)
 
         a.calculate_near_neighbors_forces()
 
