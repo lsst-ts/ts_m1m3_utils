@@ -51,9 +51,7 @@ async def get_data(
         Upsampled data.
     """
     logging.debug("Retrieving %s - %s to %s.", axis, str(t_start), str(t_end))
-    data = await client.select_time_series(
-        f"lsst.sal.MTMount.{axis}", ["actualPosition"], t_start, t_end
-    )
+    data = await client.select_time_series(f"lsst.sal.MTMount.{axis}", ["actualPosition"], t_start, t_end)
     logging.debug("Retrieved %i records.", len(data.index))
     # for some reason interpolate doesn't work
     return data["actualPosition"].resample(resample_rate, origin=data.index[0]).ffill()
@@ -78,9 +76,7 @@ async def compute_time_delay(
 
     data = await asyncio.gather(
         get_data(client, "azimuth", t1, t1 + delta_t, resample_rate),
-        get_data(
-            client, "azimuth", t2 - overlay, t2 + delta_t + overlay, resample_rate
-        ),
+        get_data(client, "azimuth", t2 - overlay, t2 + delta_t + overlay, resample_rate),
     )
 
     signal1 = data[0].values
@@ -108,9 +104,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser(
         description="M1M3 setting comparison (for now only time delay computation)"
     )
-    parser.add_argument(
-        "--efd", default="usdf_efd", help="EFD name. Defaults to usdf_efd."
-    )
+    parser.add_argument("--efd", default="usdf_efd", help="EFD name. Defaults to usdf_efd.")
     parser.add_argument(
         "--t1",
         type=str,
@@ -166,9 +160,7 @@ async def main() -> None:
 
     logging.basicConfig(format="%(asctime)s %(message)s", level=level)
 
-    logging.info(
-        f"Using t1={args.t1}, t2={args.t2}, delta_t={args.delta_t}s, overlay={args.overlay}s."
-    )
+    logging.info(f"Using t1={args.t1}, t2={args.t2}, delta_t={args.delta_t}s, overlay={args.overlay}s.")
 
     delay, signal1, signal2 = await compute_time_delay(
         args.efd,
