@@ -1048,10 +1048,7 @@ def parse_arguments() -> argparse.Namespace:
 async def run_loop() -> None:
     args = parse_arguments()
 
-    level = logging.INFO
-
-    if args.d:
-        level = logging.DEBUG
+    level = logging.DEBUG if args.d else logging.INFO
 
     logging.basicConfig(format="%(asctime)s %(message)s", level=level)
 
