@@ -19,7 +19,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from .acceleration_and_velocity import AccelerationAndVelocity
 from .acceleration_and_velocity_fitter import AccelerationAndVelocityFitter
 from .booster_valves import BoosterValves
 from .bump_test_runner import (
@@ -30,7 +29,7 @@ from .bump_test_runner import (
 )
 from .bump_test_times import BumpTestTimes
 from .duration_time import DurationTime, parse_duration
-from .find_changes import ChangedValue, find_changes
+from .fcu_stats import FCUStats
 from .force_actuator_forces import ForceActuatorForces
 from .force_calculator import ForceCalculator
 from .thermocouples import ThermocoupleAnalysis

@@ -4,10 +4,10 @@
 Version History
 ===============
 
-v0.5.1
+v0.6.0
 ------
 
-* compare-two-tma-settings script.
+* Move scripts to ts_m1m3_cli.
 
 v0.5.0
 ------
