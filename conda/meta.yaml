@@ -20,6 +20,7 @@ test:
   requires:
     - pytest
     - vcrpy
+    - ts-conda-build =0.5
   source_files:
     - python
     - tests
@@ -27,13 +28,10 @@ test:
     - pytest
 
 requirements:
-  build:
-    - python {{python}}
-    - ts-conda-build ==0.4
   host:
     - python {{python}}
-    - setuptools
-    - setuptools_scm
+    - setuptools >={{setuptools}}
+    - setuptools_scm ={{setuptools_scm}}
   run:
     - python {{python}}
     - astropy
@@ -44,4 +42,4 @@ requirements:
     - tqdm
     - ts-xml
     - lsst-efd-client
-    - ts-salobj {{ salobj_version }}
+    - ts-salobj
