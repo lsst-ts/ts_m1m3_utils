@@ -346,3 +346,44 @@ class BumpTestRunner:
         process(secondary, False)
 
         self._secondary_test[actuator.s_index] = secondary
+
+    @staticmethod
+    async def run(
+        m1m3: Remote,
+        serial: bool = False,
+        timeout: float = 20,
+        skip: list[int] | None = None,
+        start_callback: typing.Callable[[ForceActuatorData, bool], None] | None = None,
+    ) -> tuple[BumpTestsList, BumpTestsList]:
+        runner = BumpTestRunner(BumpTestsList.all_tests(m1m3, skip))
+
+        try:
+            old_callback = m1m3.evt_forceActuatorBumpTestStatus.callback
+            m1m3.evt_forceActuatorBumpTestStatus.callback = runner.force_actuator_bump_test_status
+
+            distance = 10
+            if not (serial):
+                distance = m1m3.evt_forceActuatorSettings.get().bumpTestMinimalDistance
+
+            while True:
+                test = await runner.next(distance, timeout)
+                if test is None:
+                    break
+
+                primary = test.is_primary()
+
+                await m1m3.cmd_forceActuatorBumpTest.set_start(
+                    actuatorId=test.actuator.actuator_id,
+                    testPrimary=primary,
+                    testSecondary=not (primary),
+                )
+
+                if start_callback is not None:
+                    start_callback(test.actuator, primary)
+
+            await runner.wait_finish(timeout)
+
+            return (runner.passed, runner.failed)
+
+        finally:
+            m1m3.evt_forceActuatorBumpTestStatus.callback = old_callback
