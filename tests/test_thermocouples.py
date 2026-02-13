@@ -26,10 +26,11 @@ import unittest
 import pandas as pd
 import vcr
 from astropy.time import Time, TimeDelta
-from lsst.ts.m1m3.utils import ThermocoupleAnalysis
-from lsst.ts.xml.tables.m1m3 import ThermocoupleTable, set_air_nozzles_types
 from lsst_efd_client import EfdClient
 from mock_nozzle import MockNozzle
+
+from lsst.ts.m1m3.utils import ThermocoupleAnalysis
+from lsst.ts.xml.tables.m1m3 import ThermocoupleTable, set_air_nozzles_types
 
 CASSETTE_DIR = os.path.join(os.path.dirname(__file__), "cassettes")
 

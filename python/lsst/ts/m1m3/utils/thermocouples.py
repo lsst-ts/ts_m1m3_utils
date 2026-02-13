@@ -31,6 +31,8 @@ from typing import List
 import numpy as np
 import pandas as pd
 from astropy.time import Time
+from lsst_efd_client import EfdClient
+
 from lsst.ts.xml.enums.MTM1M3TS import AirNozzle
 from lsst.ts.xml.tables.m1m3 import (
     AirNozzleTable,
@@ -39,7 +41,6 @@ from lsst.ts.xml.tables.m1m3 import (
     ThermocoupleTable,
     find_thermocouple,
 )
-from lsst_efd_client import EfdClient
 
 
 class ThermocoupleAnalysis:

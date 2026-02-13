@@ -24,6 +24,7 @@ import math
 import unittest
 
 from astropy.time import Time, TimeDelta
+
 from lsst.ts.m1m3.utils import DurationTime, parse_duration
 
 

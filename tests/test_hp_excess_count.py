@@ -20,8 +20,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import unittest
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 from astropy.time import TimeDelta
 
 from lsst.ts.m1m3.utils import HPForces
