@@ -51,7 +51,7 @@ class HPForces:
         Parameters
         ----------
         hp_id: `int`
-            Hardpoint identifier [0-5]
+            Hardpoint identifier [1-6]
         delta_t: `float`
             Reference period (in seconds) in which an 'excess' is defined
         delta_f_threshold: `float`
@@ -63,7 +63,10 @@ class HPForces:
         nsamples = int(self.sampling_freq * delta_t)
         # compute difference in force from beginning to end of period defined
         # by delta_t
-        df_hps = self.forces[f"measuredForce{hp_id}"] - self.forces[f"measuredForce{hp_id}"].shift(nsamples)
+        hp_index = hp_id - 1
+        df_hps = self.forces[f"measuredForce{hp_index}"] - self.forces[f"measuredForce{hp_index}"].shift(
+            nsamples
+        )
         df_delta = abs(df_hps.dropna())
         # count in how many points od the dataframe the condition is met,
         # this will result in some grouped events
