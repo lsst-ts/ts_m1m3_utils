@@ -51,7 +51,7 @@ class CountHPExcessesTestCase(unittest.TestCase):
         # Test the excess counter defining some parameters first
         delta_t = 1
         delta_f_threshold = 200
-        event_summary = hpf.calculate_excesses(0, delta_t, delta_f_threshold)
+        event_summary = hpf.calculate_excesses(1, delta_t, delta_f_threshold)
         self.assertAlmostEqual(event_summary["max_value"][0], test_force)
         self.assertEqual(len(event_summary), 1)
 
