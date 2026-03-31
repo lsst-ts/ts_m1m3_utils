@@ -6,8 +6,8 @@ Version History
 
 v0.6.1
 ------
-* Added tool to find and count user-defined HP excesses
 
+* Added tool to find and count user-defined HP excesses
 
 v0.6.0
 ------
