@@ -30,7 +30,10 @@ from lsst_efd_client import EfdClient
 from mock_air_nozzles import MockNozzlesAndOrificesDiameters
 
 from lsst.ts.m1m3.utils import ThermocoupleAnalysis
-from lsst.ts.xml.tables.m1m3 import ThermocoupleTable, set_air_nozzles_types_and_orifice_diameters
+from lsst.ts.xml.tables.m1m3 import (
+    ThermocoupleTable,
+    set_air_nozzles_types_and_orifice_diameters,
+)
 
 CASSETTE_DIR = os.path.join(os.path.dirname(__file__), "cassettes")
 
