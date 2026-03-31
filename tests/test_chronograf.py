@@ -22,6 +22,7 @@
 import unittest
 
 from astropy.time import Time
+
 from lsst.ts.m1m3.utils.chronograf import DashboardURL, M1M3ForceActuatorForces
 from lsst.ts.xml.tables.m1m3 import FATable
 

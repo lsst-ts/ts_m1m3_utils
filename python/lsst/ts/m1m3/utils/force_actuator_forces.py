@@ -19,8 +19,9 @@
 
 import pandas as pd
 from astropy.time import Time
-from lsst.ts.xml.tables.m1m3 import FATable, ForceActuatorData
 from lsst_efd_client import EfdClient
+
+from lsst.ts.xml.tables.m1m3 import FATable, ForceActuatorData
 
 
 class ForceActuatorForces:

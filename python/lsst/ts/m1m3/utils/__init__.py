@@ -32,4 +32,5 @@ from .duration_time import DurationTime, parse_duration
 from .fcu_stats import FCUStats
 from .force_actuator_forces import ForceActuatorForces
 from .force_calculator import ForceCalculator
+from .hp_excess_count import HPForces
 from .thermocouples import ThermocoupleAnalysis

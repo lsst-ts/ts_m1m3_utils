@@ -24,6 +24,7 @@ import pathlib
 import unittest
 
 import numpy as np
+
 from lsst.ts.m1m3.utils import ForceCalculator
 from lsst.ts.xml.tables.m1m3 import FATABLE_XFA, FATABLE_YFA, FATABLE_ZFA, FATable
 

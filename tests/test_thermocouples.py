@@ -26,10 +26,11 @@ import unittest
 import pandas as pd
 import vcr
 from astropy.time import Time, TimeDelta
-from lsst.ts.m1m3.utils import ThermocoupleAnalysis
-from lsst.ts.xml.tables.m1m3 import ThermocoupleTable, set_air_nozzles_types
 from lsst_efd_client import EfdClient
-from mock_nozzle import MockNozzle
+from mock_air_nozzles import MockNozzlesAndOrificesDiameters
+
+from lsst.ts.m1m3.utils import ThermocoupleAnalysis
+from lsst.ts.xml.tables.m1m3 import ThermocoupleTable, set_air_nozzles_types_and_orifice_diameters
 
 CASSETTE_DIR = os.path.join(os.path.dirname(__file__), "cassettes")
 
@@ -79,7 +80,7 @@ class ThermocouplesTestCase(unittest.IsolatedAsyncioTestCase):
         start = Time("2025-08-25T18:00:00")
         end = start + TimeDelta(3600, format="sec")
 
-        set_air_nozzles_types(MockNozzle)
+        set_air_nozzles_types_and_orifice_diameters(MockNozzlesAndOrificesDiameters)
 
         with myvcr.use_cassette("thermocouples_test_load.yaml"):
             await self.tc_analysis.load(start, end, time_bin=300)

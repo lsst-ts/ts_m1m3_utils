@@ -27,6 +27,7 @@ from typing import Any, Generator, Self
 import numpy as np
 import pandas as pd
 import yaml
+
 from lsst.ts.salobj import BaseMsgType
 from lsst.ts.xml.tables.m1m3 import (
     FATABLE_XFA,

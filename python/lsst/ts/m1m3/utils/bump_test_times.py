@@ -22,9 +22,10 @@ from dataclasses import dataclass
 from typing import AsyncGenerator
 
 from astropy.time import Time, TimeDelta
+from lsst_efd_client import EfdClient
+
 from lsst.ts.xml.enums.MTM1M3 import BumpTest as BumpTestStatus
 from lsst.ts.xml.tables.m1m3 import ForceActuatorData
-from lsst_efd_client import EfdClient
 
 
 @dataclass

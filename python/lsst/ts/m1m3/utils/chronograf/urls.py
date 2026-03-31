@@ -22,6 +22,7 @@
 from urllib.parse import urlencode, urlunparse
 
 from astropy.time import Time
+
 from lsst.ts.xml.tables.m1m3 import ForceActuatorData
 
 __all__ = ["DashboardURL", "M1M3FCUStats", "M1M3ForceActuatorForces"]
