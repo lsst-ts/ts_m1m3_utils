@@ -669,6 +669,7 @@ class ThermocoupleAnalysis:
         self,
         make_3d_map: bool = True,
         remove_nonstandard_cells: bool = False,
+        radius_limit: float | None = None,
     ) -> tuple[np.array, pd.DataFrame]:
         """Return a map
 
@@ -766,12 +767,56 @@ class ThermocoupleAnalysis:
                     )
         if make_3d_map:
             common = [c for c in data.columns if c in coord]
+
+            if radius_limit is not None:
+                common = [
+                    c for c in common
+                    if np.hypot(coord[c][0], coord[c][1]) <= radius_limit
+                ]
+
             xyz = np.array([coord[n] for n in common])
+
         else:
             common = [c for c in data.columns if c + "F" in coord]
+
+            if radius_limit is not None:
+                common = [
+                    c for c in common
+                    if np.hypot(coord[c + "F"][0], coord[c + "F"][1]) <= radius_limit
+                ]
+
             xyz = np.array([coord[n + "F"] for n in common])
 
         return xyz.T, data[common]
+
+    def __filter_data_by_radius(
+        self,
+        data: pd.DataFrame,
+        radius_limit: float | None = None,
+    ) -> pd.DataFrame:
+        if radius_limit is None:
+            return data
+
+        keep_columns = []
+
+        for col in data.columns:
+            matches = [tc for tc in ThermocoupleTable if tc.name == col]
+
+            # vertical_cell_gradient_dataframe columns are base names,
+            # so use the F thermocouple position for that cell.
+            if len(matches) == 0:
+                matches = [tc for tc in ThermocoupleTable if tc.name == col + "F"]
+
+            if len(matches) == 0:
+                continue
+
+            tc = matches[0]
+            r = np.hypot(tc.x_position, tc.y_position)
+
+            if r <= radius_limit:
+                keep_columns.append(col)
+
+        return data[keep_columns]
 
     def calculate_vertical_differences(self) -> None:
         """Calculate vertical gradients."""
@@ -801,7 +846,8 @@ class ThermocoupleAnalysis:
         self,
         remove_nonstandard_cells: bool = True,
         use_3d_dataset: bool = True,
-    ) -> pd.DataFrame:
+        radius_limit: float | None = None,
+    ) -> pd.DataFrame:        
         """
         Estimate per-point (gx, gy, gz) and radial gradient gr
         using local weighted plane fits.
@@ -836,6 +882,7 @@ class ThermocoupleAnalysis:
         xyz, temperatures = self.__coordinate_map(
             make_3d_map=use_3d_dataset,
             remove_nonstandard_cells=remove_nonstandard_cells,
+            radius_limit=radius_limit,
         )
 
         x = np.asarray(xyz[0]).astype(float)
@@ -942,6 +989,7 @@ class ThermocoupleAnalysis:
         self,
         data: pd.DataFrame,
         window_minutes: float = 30,
+        radius_limit: float | None = None,
     ) -> pd.DataFrame:
         """
         Compute per-timestamp temperature stats and a windowed rate of change.
@@ -969,6 +1017,11 @@ class ThermocoupleAnalysis:
         if not isinstance(data.index, pd.DatetimeIndex):
             raise TypeError("DataFrame index must be a pandas.DatetimeIndex.")
 
+        data = self.__filter_data_by_radius(
+            data=data,
+            radius_limit=radius_limit,
+        )
+        
         # Row-wise stats (preserve original index order, allow NaNs)
         mean_temp = data.mean(axis=1, skipna=True)
         std_temp = data.std(axis=1, skipna=True)
