@@ -769,10 +769,7 @@ class ThermocoupleAnalysis:
             common = [c for c in data.columns if c in coord]
 
             if radius_limit is not None:
-                common = [
-                    c for c in common
-                    if np.hypot(coord[c][0], coord[c][1]) <= radius_limit
-                ]
+                common = [c for c in common if np.hypot(coord[c][0], coord[c][1]) <= radius_limit]
 
             xyz = np.array([coord[n] for n in common])
 
@@ -780,10 +777,7 @@ class ThermocoupleAnalysis:
             common = [c for c in data.columns if c + "F" in coord]
 
             if radius_limit is not None:
-                common = [
-                    c for c in common
-                    if np.hypot(coord[c + "F"][0], coord[c + "F"][1]) <= radius_limit
-                ]
+                common = [c for c in common if np.hypot(coord[c + "F"][0], coord[c + "F"][1]) <= radius_limit]
 
             xyz = np.array([coord[n + "F"] for n in common])
 
@@ -847,7 +841,7 @@ class ThermocoupleAnalysis:
         remove_nonstandard_cells: bool = True,
         use_3d_dataset: bool = True,
         radius_limit: float | None = None,
-    ) -> pd.DataFrame:        
+    ) -> pd.DataFrame:
         """
         Estimate per-point (gx, gy, gz) and radial gradient gr
         using local weighted plane fits.
@@ -877,6 +871,11 @@ class ThermocoupleAnalysis:
             - 'radial_gradient_err'  : Estimated radial gradient error
             - 'z_gradient_err'  :  Estimated z gradient error
                                    if use_3d_dataset=True
+            - 'radial_intercept'    : Estimated intercept for radial fits
+            - 'radial_intercept_err'    : Estimated intercept error radial fits
+            - 'radial_z'    : Estimated z-term for radial fits
+            - 'radial_z_err'    : Estimated z-term error for radial fits
+
         """
 
         xyz, temperatures = self.__coordinate_map(
@@ -911,6 +910,11 @@ class ThermocoupleAnalysis:
         intercepts = []
         intercepts_err = []
 
+        all_gr_intercept = []
+        all_gr_intercept_err = []
+        all_gr_z = []
+        all_gr_z_err = []
+
         for k, row in temperatures.iterrows():
             temperature = row.to_numpy()
             temperature = np.asarray(temperature).astype(float)
@@ -942,16 +946,22 @@ class ThermocoupleAnalysis:
             ArTAr = Ar.T @ Ar
             ArTy = Ar.T @ temperature
 
-            beta = np.linalg.lstsq(ArTAr, ArTy, rcond=None)[0]
+            beta_r = np.linalg.lstsq(ArTAr, ArTy, rcond=None)[0]
 
             y_hat = Ar @ np.linalg.lstsq(Ar, temperature, rcond=None)[0]
             dof = max(len(y) - Ar.shape[1], 1)
-            sigma2 = float(np.sum((y - y_hat) ** 2) / dof)
-            cov = sigma2 * np.linalg.pinv(ATA)
+            sigma2 = float(np.sum((temperature - y_hat) ** 2) / dof)
+            cov = sigma2 * np.linalg.pinv(ArTAr)
             errs = np.sqrt(np.diag(cov))
 
-            all_gr.append(beta[1])
+            all_gr_intercept.append(beta_r[0])
+            all_gr_intercept_err.append(errs[0])
+            all_gr.append(beta_r[1])
             all_gr_err.append(errs[1])
+
+            if use_3d_dataset:
+                all_gr_z.append(beta_r[2])
+                all_gr_z_err.append(errs[2])
 
         if use_3d_dataset:
             return pd.DataFrame(
@@ -966,6 +976,10 @@ class ThermocoupleAnalysis:
                     "z_gradient_err": all_gz_err,
                     "radial_gradient": all_gr,
                     "radial_gradient_err": all_gr_err,
+                    "radial_intercept": all_gr_intercept,
+                    "radial_intercept_err": all_gr_intercept_err,
+                    "radial_z_gradient": all_gr_z,
+                    "radial_z_gradient_err": all_gr_z_err,
                 },
                 index=temperatures.index,
             )
@@ -981,6 +995,8 @@ class ThermocoupleAnalysis:
                     "y_gradient_err": all_gy_err,
                     "radial_gradient": all_gr,
                     "radial_gradient_err": all_gr_err,
+                    "radial_intercept": all_gr_intercept,
+                    "radial_intercept_err": all_gr_intercept_err,
                 },
                 index=temperatures.index,
             )
@@ -1021,7 +1037,7 @@ class ThermocoupleAnalysis:
             data=data,
             radius_limit=radius_limit,
         )
-        
+
         # Row-wise stats (preserve original index order, allow NaNs)
         mean_temp = data.mean(axis=1, skipna=True)
         std_temp = data.std(axis=1, skipna=True)
