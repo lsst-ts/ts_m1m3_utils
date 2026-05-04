@@ -4,6 +4,11 @@
 Version History
 ===============
 
+v0.6.2
+------
+
+* Add new feature to include a radius limit in the thermocouples module when calculating gradients. 
+
 v0.6.1
 ------
 
