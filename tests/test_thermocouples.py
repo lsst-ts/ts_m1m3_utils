@@ -30,10 +30,7 @@ from lsst_efd_client import EfdClient
 from mock_air_nozzles import MockNozzlesAndOrificesDiameters
 
 from lsst.ts.m1m3.utils import ThermocoupleAnalysis
-from lsst.ts.xml.tables.m1m3 import (
-    ThermocoupleTable,
-    set_air_nozzles_types_and_orifice_diameters,
-)
+from lsst.ts.xml.tables.m1m3 import M3_R, ThermocoupleTable, set_air_nozzles_types_and_orifice_diameters
 
 CASSETTE_DIR = os.path.join(os.path.dirname(__file__), "cassettes")
 
@@ -105,9 +102,43 @@ class ThermocouplesTestCase(unittest.IsolatedAsyncioTestCase):
         with myvcr.use_cassette("thermocouples_test_load.yaml"):
             await self.tc_analysis.load(start, end, time_bin=300)
 
+        assert [t.index for t in self.tc_analysis.nonstandard_thermocouples] == []
+
         assert len(self.tc_analysis.bulk_glass_temperature_metrics.index) == 12
 
         assert 8.9 <= self.tc_analysis.bulk_glass_temperature_metrics.mean_temp.iloc[0] <= 9
+        assert (8.9 <= self.tc_analysis.bulk_glass_temperature_metrics.mean_temp).all()
+        assert (self.tc_analysis.bulk_glass_temperature_metrics.mean_temp <= 9.35).all()
+
+    async def test_load_radius(self) -> None:
+        start = Time("2025-08-25T18:00:00")
+        end = start + TimeDelta(3600, format="sec")
+
+        with myvcr.use_cassette("thermocouples_test_load.yaml"):
+            await self.tc_analysis.load(start, end, time_bin=300, radius_limit=M3_R)
+
+        assert len(self.tc_analysis.bulk_glass_temperature_metrics.index) == 12
+
+        assert [t.index for t in self.tc_analysis.nonstandard_thermocouples] == [117, 118, 125, 126]
+
+        assert 8.9 <= self.tc_analysis.bulk_glass_temperature_metrics.mean_temp.iloc[0] <= 9
+
+        assert (8.8 <= self.tc_analysis.bulk_glass_temperature_metrics.mean_temp).all()
+        assert (self.tc_analysis.bulk_glass_temperature_metrics.mean_temp <= 9.35).all()
+
+        assert (-0.02 <= self.tc_analysis.xyz_r_gradients.x_gradient).all()
+        assert (self.tc_analysis.xyz_r_gradients.x_gradient <= 0.02).all()
+
+        assert (-0.02 <= self.tc_analysis.xyz_r_gradients.y_gradient).all()
+        assert (self.tc_analysis.xyz_r_gradients.y_gradient <= 0.02).all()
+
+        assert (0.23 <= self.tc_analysis.xyz_r_gradients.z_gradient).all()
+        assert (self.tc_analysis.xyz_r_gradients.z_gradient <= 0.3).all()
+
+        assert (0.23 <= self.tc_analysis.xyz_r_gradients.radial_z_gradient).all()
+        assert (self.tc_analysis.xyz_r_gradients.radial_z_gradient <= 0.3).all()
+
+        print(self.tc_analysis.cold_junction_dataframe.columns)
 
 
 if __name__ == "__main__":

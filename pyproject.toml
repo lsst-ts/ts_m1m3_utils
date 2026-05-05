@@ -11,6 +11,7 @@ urls = { documentation = "https://ts-m1m3-utils.lsst.io", repository = "https://
 dynamic = [ "version" ]
 dependencies = [
   "astropy",
+  "Cython",
   "matplotlib",
   "numpy",
   "pandas",

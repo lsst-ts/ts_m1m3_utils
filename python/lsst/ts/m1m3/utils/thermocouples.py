@@ -116,6 +116,8 @@ class ThermocoupleAnalysis:
         time_bin: int = 60,
         do_remove_cold_junction: bool = False,
         do_remove_offsets: bool = False,
+        window_minutes: float = 30,
+        radius_limit: float | None = None,
     ) -> None:
         """Get all thermal scanner data within a given time window.
 
@@ -135,6 +137,12 @@ class ThermocoupleAnalysis:
         do_remove_offsets : `boolean`, optional
             If true, remove offsets for each thermocouple.
             Defaults to False.
+        window_minutes : float
+            Size of the look-back window (e.g., 30 for 30 minutes).
+        radius_limit : float, optional
+            Limit radius distance in meters for thermocouples to be considered
+            for calculation. Optional, defaults to None - all thermocouples
+            will be used for gradient calculation.
 
         Returns
         -------
@@ -251,10 +259,14 @@ class ThermocoupleAnalysis:
             self.mean_vertical_cell_gradient = z_filtered.mean(axis=1, skipna=True)
 
             self.bulk_glass_temperature_metrics = self.compute_temp_stats_and_rate(
-                data=self.all_thermocouples_dataframe,
+                self.all_thermocouples_dataframe,
+                window_minutes,
+                radius_limit,
             )
             self.vertical_gradient_temperature_metrics = self.compute_temp_stats_and_rate(
-                data=self.vertical_cell_gradient_dataframe
+                self.vertical_cell_gradient_dataframe,
+                window_minutes,
+                radius_limit,
             )
 
     def __remove_cold_junction_gradient(self, data: pd.DataFrame) -> pd.DataFrame:
