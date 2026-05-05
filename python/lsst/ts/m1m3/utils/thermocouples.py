@@ -116,6 +116,8 @@ class ThermocoupleAnalysis:
         time_bin: int = 60,
         do_remove_cold_junction: bool = False,
         do_remove_offsets: bool = False,
+        window_minutes: float = 30,
+        radius_limit: float | None = None,
     ) -> None:
         """Get all thermal scanner data within a given time window.
 
@@ -135,6 +137,12 @@ class ThermocoupleAnalysis:
         do_remove_offsets : `boolean`, optional
             If true, remove offsets for each thermocouple.
             Defaults to False.
+        window_minutes : float
+            Size of the look-back window (e.g., 30 for 30 minutes).
+        radius_limit : float, optional
+            Limit radius distance in meters for thermocouples to be considered
+            for calculation. Optional, defaults to None - all thermocouples
+            will be used for gradient calculation.
 
         Returns
         -------
@@ -251,10 +259,14 @@ class ThermocoupleAnalysis:
             self.mean_vertical_cell_gradient = z_filtered.mean(axis=1, skipna=True)
 
             self.bulk_glass_temperature_metrics = self.compute_temp_stats_and_rate(
-                data=self.all_thermocouples_dataframe,
+                self.all_thermocouples_dataframe,
+                window_minutes,
+                radius_limit,
             )
             self.vertical_gradient_temperature_metrics = self.compute_temp_stats_and_rate(
-                data=self.vertical_cell_gradient_dataframe
+                self.vertical_cell_gradient_dataframe,
+                window_minutes,
+                radius_limit,
             )
 
     def __remove_cold_junction_gradient(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -669,6 +681,7 @@ class ThermocoupleAnalysis:
         self,
         make_3d_map: bool = True,
         remove_nonstandard_cells: bool = False,
+        radius_limit: float | None = None,
     ) -> tuple[np.array, pd.DataFrame]:
         """Return a map
 
@@ -681,6 +694,10 @@ class ThermocoupleAnalysis:
             If false, return xyz positions and dataframe for all thermocouples.
             If true, return xyz positions only for normally
             installed air nozzle locations.
+        radius_limit : float, optional
+            Limit radius distance in meters for thermocouples to be considered
+            for calculation. Optional, defaults to None - all thermocouples
+            will be used for gradient calculation.
 
         Returns
         -------
@@ -766,12 +783,50 @@ class ThermocoupleAnalysis:
                     )
         if make_3d_map:
             common = [c for c in data.columns if c in coord]
+
+            if radius_limit is not None:
+                common = [c for c in common if np.hypot(*coord[c][:2]) <= radius_limit]
+
             xyz = np.array([coord[n] for n in common])
+
         else:
             common = [c for c in data.columns if c + "F" in coord]
+
+            if radius_limit is not None:
+                common = [c for c in common if np.hypot(*coord[c + "F"][:2]) <= radius_limit]
+
             xyz = np.array([coord[n + "F"] for n in common])
 
         return xyz.T, data[common]
+
+    def __filter_data_by_radius(
+        self,
+        data: pd.DataFrame,
+        radius_limit: float | None = None,
+    ) -> pd.DataFrame:
+        if radius_limit is None:
+            return data
+
+        keep_columns = []
+
+        for col in data.columns:
+            matches = [tc for tc in ThermocoupleTable if tc.name == col]
+
+            # vertical_cell_gradient_dataframe columns are base names,
+            # so use the F thermocouple position for that cell.
+            if len(matches) == 0:
+                matches = [tc for tc in ThermocoupleTable if tc.name == col + "F"]
+
+            if len(matches) == 0:
+                continue
+
+            tc = matches[0]
+            r = np.hypot(tc.x_position, tc.y_position)
+
+            if r <= radius_limit:
+                keep_columns.append(col)
+
+        return data[keep_columns]
 
     def calculate_vertical_differences(self) -> None:
         """Calculate vertical gradients."""
@@ -801,6 +856,7 @@ class ThermocoupleAnalysis:
         self,
         remove_nonstandard_cells: bool = True,
         use_3d_dataset: bool = True,
+        radius_limit: float | None = None,
     ) -> pd.DataFrame:
         """
         Estimate per-point (gx, gy, gz) and radial gradient gr
@@ -815,6 +871,10 @@ class ThermocoupleAnalysis:
         use_3d_dataset : boolean
             If true, use the 3D data.
             If false, use the z difference dataset
+        radius_limit : float, optional
+            Limit radius distance in meters for thermocouples to be considered
+            for calculation. Optional, defaults to None - all thermocouples
+            will be used for gradient calculation.
 
         Returns
         -------
@@ -831,11 +891,17 @@ class ThermocoupleAnalysis:
             - 'radial_gradient_err'  : Estimated radial gradient error
             - 'z_gradient_err'  :  Estimated z gradient error
                                    if use_3d_dataset=True
+            - 'radial_intercept'    : Estimated intercept for radial fits
+            - 'radial_intercept_err'    : Estimated intercept error radial fits
+            - 'radial_z'    : Estimated z-term for radial fits
+            - 'radial_z_err'    : Estimated z-term error for radial fits
+
         """
 
         xyz, temperatures = self.__coordinate_map(
             make_3d_map=use_3d_dataset,
             remove_nonstandard_cells=remove_nonstandard_cells,
+            radius_limit=radius_limit,
         )
 
         x = np.asarray(xyz[0]).astype(float)
@@ -863,6 +929,11 @@ class ThermocoupleAnalysis:
         all_gr_err = []
         intercepts = []
         intercepts_err = []
+
+        all_gr_intercept = []
+        all_gr_intercept_err = []
+        all_gr_z = []
+        all_gr_z_err = []
 
         for k, row in temperatures.iterrows():
             temperature = row.to_numpy()
@@ -895,16 +966,22 @@ class ThermocoupleAnalysis:
             ArTAr = Ar.T @ Ar
             ArTy = Ar.T @ temperature
 
-            beta = np.linalg.lstsq(ArTAr, ArTy, rcond=None)[0]
+            beta_r = np.linalg.lstsq(ArTAr, ArTy, rcond=None)[0]
 
             y_hat = Ar @ np.linalg.lstsq(Ar, temperature, rcond=None)[0]
             dof = max(len(y) - Ar.shape[1], 1)
-            sigma2 = float(np.sum((y - y_hat) ** 2) / dof)
-            cov = sigma2 * np.linalg.pinv(ATA)
+            sigma2 = float(np.sum((temperature - y_hat) ** 2) / dof)
+            cov = sigma2 * np.linalg.pinv(ArTAr)
             errs = np.sqrt(np.diag(cov))
 
-            all_gr.append(beta[1])
+            all_gr_intercept.append(beta_r[0])
+            all_gr_intercept_err.append(errs[0])
+            all_gr.append(beta_r[1])
             all_gr_err.append(errs[1])
+
+            if use_3d_dataset:
+                all_gr_z.append(beta_r[2])
+                all_gr_z_err.append(errs[2])
 
         if use_3d_dataset:
             return pd.DataFrame(
@@ -919,6 +996,10 @@ class ThermocoupleAnalysis:
                     "z_gradient_err": all_gz_err,
                     "radial_gradient": all_gr,
                     "radial_gradient_err": all_gr_err,
+                    "radial_intercept": all_gr_intercept,
+                    "radial_intercept_err": all_gr_intercept_err,
+                    "radial_z_gradient": all_gr_z,
+                    "radial_z_gradient_err": all_gr_z_err,
                 },
                 index=temperatures.index,
             )
@@ -934,6 +1015,8 @@ class ThermocoupleAnalysis:
                     "y_gradient_err": all_gy_err,
                     "radial_gradient": all_gr,
                     "radial_gradient_err": all_gr_err,
+                    "radial_intercept": all_gr_intercept,
+                    "radial_intercept_err": all_gr_intercept_err,
                 },
                 index=temperatures.index,
             )
@@ -942,6 +1025,7 @@ class ThermocoupleAnalysis:
         self,
         data: pd.DataFrame,
         window_minutes: float = 30,
+        radius_limit: float | None = None,
     ) -> pd.DataFrame:
         """
         Compute per-timestamp temperature stats and a windowed rate of change.
@@ -953,6 +1037,10 @@ class ThermocoupleAnalysis:
             Columns: temperature sensors. Values are temperatures (any units).
         window_minutes : float
             Size of the look-back window (e.g., 30 for 30 minutes).
+        radius_limit : float, optional
+            Limit radius distance in meters for thermocouples to be considered
+            for calculation. Optional, defaults to None - all thermocouples
+            will be used for gradient calculation.
 
         Returns
         -------
@@ -968,6 +1056,11 @@ class ThermocoupleAnalysis:
 
         if not isinstance(data.index, pd.DatetimeIndex):
             raise TypeError("DataFrame index must be a pandas.DatetimeIndex.")
+
+        data = self.__filter_data_by_radius(
+            data=data,
+            radius_limit=radius_limit,
+        )
 
         # Row-wise stats (preserve original index order, allow NaNs)
         mean_temp = data.mean(axis=1, skipna=True)
