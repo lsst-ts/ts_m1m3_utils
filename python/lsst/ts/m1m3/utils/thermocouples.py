@@ -682,6 +682,10 @@ class ThermocoupleAnalysis:
             If false, return xyz positions and dataframe for all thermocouples.
             If true, return xyz positions only for normally
             installed air nozzle locations.
+        radius_limit : float, optional
+            Limit radius distance in meters for thermocouples to be considered
+            for calculation. Optional, defaults to None - all thermocouples
+            will be used for gradient calculation.
 
         Returns
         -------
@@ -769,7 +773,7 @@ class ThermocoupleAnalysis:
             common = [c for c in data.columns if c in coord]
 
             if radius_limit is not None:
-                common = [c for c in common if np.hypot(coord[c][0], coord[c][1]) <= radius_limit]
+                common = [c for c in common if np.hypot(*coord[c][:2]) <= radius_limit]
 
             xyz = np.array([coord[n] for n in common])
 
@@ -777,7 +781,7 @@ class ThermocoupleAnalysis:
             common = [c for c in data.columns if c + "F" in coord]
 
             if radius_limit is not None:
-                common = [c for c in common if np.hypot(coord[c + "F"][0], coord[c + "F"][1]) <= radius_limit]
+                common = [c for c in common if np.hypot(*coord[c + "F"][:2]) <= radius_limit]
 
             xyz = np.array([coord[n + "F"] for n in common])
 
@@ -855,6 +859,10 @@ class ThermocoupleAnalysis:
         use_3d_dataset : boolean
             If true, use the 3D data.
             If false, use the z difference dataset
+        radius_limit : float, optional
+            Limit radius distance in meters for thermocouples to be considered
+            for calculation. Optional, defaults to None - all thermocouples
+            will be used for gradient calculation.
 
         Returns
         -------
@@ -1017,6 +1025,10 @@ class ThermocoupleAnalysis:
             Columns: temperature sensors. Values are temperatures (any units).
         window_minutes : float
             Size of the look-back window (e.g., 30 for 30 minutes).
+        radius_limit : float, optional
+            Limit radius distance in meters for thermocouples to be considered
+            for calculation. Optional, defaults to None - all thermocouples
+            will be used for gradient calculation.
 
         Returns
         -------
