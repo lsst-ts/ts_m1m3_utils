@@ -36,4 +36,5 @@ requirements:
     - scipy
     - ts-xml
     - lsst-efd-client
+    - ts-ess-common
     - ts-salobj

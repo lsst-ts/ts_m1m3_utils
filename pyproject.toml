@@ -16,6 +16,7 @@ dependencies = [
   "numpy",
   "pandas",
   "scipy",
+  "ts_ess_common",
   "ts_salobj",
   "ts_xml",
   "lsst_efd_client",
