@@ -1,8 +1,12 @@
-.. _Version_History:
+.. py:currentmodule:: lsst.ts.m1m3.utils
+
+.. _lsst.ts.m1m3.utils-version_history:
 
 ===============
 Version History
 ===============
+
+.. towncrier release notes start
 
 v0.6.2
 ------
