@@ -33,5 +33,12 @@ from .fcu_stats import FCUStats
 from .force_actuator_forces import ForceActuatorForces
 from .force_calculator import ForceCalculator
 from .hp_excess_count import HPForces
+from .thermal_gradients import (
+    ThermalGradients,
+    fit_plane_gradients,
+    fit_thermal_gradients,
+    nonstandard_thermocouples,
+    thermocouple_z_position,
+)
 from .thermocouple_cache import ThermocoupleCache
 from .thermocouples import ThermocoupleAnalysis
