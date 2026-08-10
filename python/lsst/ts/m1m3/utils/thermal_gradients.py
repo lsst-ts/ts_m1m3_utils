@@ -87,9 +87,9 @@ def nonstandard_thermocouples() -> list[ThermocoupleData]:
     """Return all thermocouples in cells with nonstandard air nozzle
     configurations.
 
-    Uses the current content of `AirNozzleTable`, so call
-    `lsst.ts.xml.tables.m1m3.set_air_nozzles_types_and_orifice_diameters`
-    first to get meaningful results.
+    This function uses the current content of `AirNozzleTable`. Call
+    `lsst.ts.xml.tables.m1m3.set_air_nozzles_types_and_orifice_diameters` first
+    to get meaningful results.
     """
     ret = []
     for thermocouple in ThermocoupleTable:
@@ -99,12 +99,53 @@ def nonstandard_thermocouples() -> list[ThermocoupleData]:
     return ret
 
 
+def linear_regression(design: np.ndarray, temperatures: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """This function estimates spatial temperature gradients and their
+    standard errors using Ordinary Least Squares (OLS) regression derived
+    from the matrix Normal Equations.
+
+    Parameters
+    ----------
+    design : `np.ndarray`
+        The design matrix - ones, x,y (and z, for 3D fit).
+    temperatures : `np.ndarray`
+        Sensor temperatures in deg C, shape (n,).
+
+    Returns
+    -------
+    beta : `np.ndarray`
+        Vector of coefficients - baseline temperature and spatial
+        gradients.
+    variance : `np.ndarray`
+        The variance of each fitted model parametr.
+    """
+
+    n, p = design.shape
+
+    # 1. Fit linear model directly: X @ beta = y
+    beta, ss_res, rank, _ = np.linalg.lstsq(design, temperatures, rcond=None)
+
+    # 2. Compute residual variance (sigma^2 = SS_res / degrees_of_freedom)
+    dof = n - rank
+    if dof <= 0:
+        raise ValueError(f"Degrees of freedom must be positive (got n={n}, rank={rank}).")
+    sigma2 = float(ss_res[0] / dof)
+
+    # 3. Covariance matrix of parameter estimates:
+    #    cov = sigma^2 * (X^T X)^(-1)
+    cov = sigma2 * np.linalg.pinv(design.T @ design)
+
+    # 4. Return coefficients (intercept and gradients) and variance of each
+    # fitted model parameter (standard errors).
+    return beta, np.sqrt(np.diag(cov))
+
+
 def fit_plane_gradients(positions: np.ndarray, temperatures: np.ndarray) -> ThermalGradients:
     """Fit Cartesian and radial temperature planes to a single sample.
 
-    Solves the least-squares problems t = a + gx*x + gy*y (+ gz*z)
-    and t = ar + gr*r (+ grz*z), with parameter errors estimated from the
-    fit residuals. Sensors with non-finite temperatures are ignored.
+    The method solve the least-squares problems t = a + gx*x + gy*y (+ gz*z)
+    and t = ar + gr*r (+ grz*z), with parameter errors estimated from the fit
+    residuals. Sensors with non-finite temperatures are ignored.
 
     Parameters
     ----------
@@ -137,41 +178,40 @@ def fit_plane_gradients(positions: np.ndarray, temperatures: np.ndarray) -> Ther
     y = positions[:, 1]
     r = np.hypot(x, y)
 
+    n_ones = np.ones(n)
+
     if use_3d:
         z = positions[:, 2]
-        A = np.column_stack([np.ones(n), x, y, z])
-        Ar = np.column_stack([np.ones(n), r, z])
+        design_cartesian = np.c_[n_ones, x, y, z]
+        design_radial = np.c_[n_ones, r, z]
     else:
-        A = np.column_stack([np.ones(n), x, y])
-        Ar = np.column_stack([np.ones(n), r])
+        design_cartesian = np.c_[n_ones, x, y]
+        design_radial = np.c_[n_ones, r]
 
-    def solve(design: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        dtd = design.T @ design
-        beta = np.linalg.lstsq(dtd, design.T @ temperatures, rcond=None)[0]
-        residuals = temperatures - design @ beta
-        dof = max(n - design.shape[1], 1)
-        sigma2 = float(np.sum(residuals**2) / dof)
-        cov = sigma2 * np.linalg.pinv(dtd)
-        return beta, np.sqrt(np.diag(cov))
-
-    beta, errs = solve(A)
-    beta_r, errs_r = solve(Ar)
+    # calculates betas and errors for the mirror as function of (x,y) or
+    # (x,y,z) for 3D fit and as function of the radius (beta_r and errs_r).
+    temperature_coefficients_xyz, temperature_coefficient_errs_xyz = linear_regression(
+        design_cartesian, temperatures
+    )
+    temperature_coefficients_radial, temperature_coefficient_errs_radial = linear_regression(
+        design_radial, temperatures
+    )
 
     return ThermalGradients(
-        intercept=beta[0],
-        intercept_err=errs[0],
-        x_gradient=beta[1],
-        x_gradient_err=errs[1],
-        y_gradient=beta[2],
-        y_gradient_err=errs[2],
-        z_gradient=beta[3] if use_3d else np.nan,
-        z_gradient_err=errs[3] if use_3d else np.nan,
-        radial_gradient=beta_r[1],
-        radial_gradient_err=errs_r[1],
-        radial_intercept=beta_r[0],
-        radial_intercept_err=errs_r[0],
-        radial_z_gradient=beta_r[2] if use_3d else np.nan,
-        radial_z_gradient_err=errs_r[2] if use_3d else np.nan,
+        intercept=temperature_coefficients_xyz[0],
+        intercept_err=temperature_coefficient_errs_xyz[0],
+        x_gradient=temperature_coefficients_xyz[1],
+        x_gradient_err=temperature_coefficient_errs_xyz[1],
+        y_gradient=temperature_coefficients_xyz[2],
+        y_gradient_err=temperature_coefficient_errs_xyz[2],
+        z_gradient=temperature_coefficients_xyz[3] if use_3d else np.nan,
+        z_gradient_err=temperature_coefficient_errs_xyz[3] if use_3d else np.nan,
+        radial_gradient=temperature_coefficients_radial[1],
+        radial_gradient_err=temperature_coefficient_errs_radial[1],
+        radial_intercept=temperature_coefficients_radial[0],
+        radial_intercept_err=temperature_coefficient_errs_radial[0],
+        radial_z_gradient=temperature_coefficients_radial[2] if use_3d else np.nan,
+        radial_z_gradient_err=(temperature_coefficient_errs_radial[2] if use_3d else np.nan),
     )
 
 

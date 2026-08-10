@@ -34,8 +34,8 @@ class ThermocoupleCache:
     """Cache live M1M3 thermal scanner temperatures until a valid set is
     completed.
 
-    Ingests ESS.temperature telemetry messages published by the four M1M3
-    GEC thermal scanner instances (SAL indices 114-117, see
+    The method ingest ESS.temperature telemetry messages published by the four
+    M1M3 GEC thermal scanner instances (SAL indices 114-117, see
     `lsst.ts.xml.tables.m1m3.Scanner`) and maps every channel to its
     thermocouple. A valid set is completed when all expected thermocouples
     have a finite sample not older than ``max_data_age`` seconds relative
@@ -71,7 +71,7 @@ class ThermocoupleCache:
     def __init__(
         self,
         max_data_age: float = 120.0,
-        max_missing: int = 0,
+        max_missing: int = 12,
         expected_names: set[str] | None = None,
     ):
         self.max_data_age = max_data_age
@@ -90,7 +90,7 @@ class ThermocoupleCache:
         timestamp: float,
         temperatures: Sequence[float],
     ) -> bool:
-        """Ingest one ESS.temperature telemetry message.
+        """Append one ESS.temperature telemetry message into cache.
 
         Non-finite temperatures and channels without an assigned
         thermocouple (e.g. the cold junction) are ignored.
