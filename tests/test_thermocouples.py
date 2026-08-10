@@ -30,7 +30,11 @@ from lsst_efd_client import EfdClient
 from mock_air_nozzles import MockNozzlesAndOrificesDiameters
 
 from lsst.ts.m1m3.utils import ThermocoupleAnalysis
-from lsst.ts.xml.tables.m1m3 import M3_R, ThermocoupleTable, set_air_nozzles_types_and_orifice_diameters
+from lsst.ts.xml.tables.m1m3 import (
+    M3_R,
+    ThermocoupleTable,
+    set_air_nozzles_types_and_orifice_diameters,
+)
 
 CASSETTE_DIR = os.path.join(os.path.dirname(__file__), "cassettes")
 
@@ -119,7 +123,12 @@ class ThermocouplesTestCase(unittest.IsolatedAsyncioTestCase):
 
         assert len(self.tc_analysis.bulk_glass_temperature_metrics.index) == 12
 
-        assert [t.index for t in self.tc_analysis.nonstandard_thermocouples] == [117, 118, 125, 126]
+        assert [t.index for t in self.tc_analysis.nonstandard_thermocouples] == [
+            117,
+            118,
+            125,
+            126,
+        ]
 
         assert 8.9 <= self.tc_analysis.bulk_glass_temperature_metrics.mean_temp.iloc[0] <= 9
 

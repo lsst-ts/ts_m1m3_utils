@@ -33,4 +33,5 @@ from .fcu_stats import FCUStats
 from .force_actuator_forces import ForceActuatorForces
 from .force_calculator import ForceCalculator
 from .hp_excess_count import HPForces
+from .thermocouple_cache import ThermocoupleCache
 from .thermocouples import ThermocoupleAnalysis
