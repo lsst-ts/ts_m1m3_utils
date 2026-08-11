@@ -33,14 +33,14 @@ import pandas as pd
 from astropy.time import Time
 from lsst_efd_client import EfdClient
 
-from lsst.ts.xml.enums.MTM1M3TS import AirNozzle
 from lsst.ts.xml.tables.m1m3 import (
-    AirNozzleTable,
     Scanner,
     ThermocoupleData,
     ThermocoupleTable,
     find_thermocouple,
 )
+
+from .thermal_gradients import fit_plane_gradients, nonstandard_thermocouples
 
 
 class ThermocoupleAnalysis:
@@ -670,12 +670,7 @@ class ThermocoupleAnalysis:
         """Make a list of all thermocouples with nonstandard
         air nozzle configurations in their cells.
         """
-        self.nonstandard_thermocouples = []
-
-        for thermocouple in ThermocoupleTable:
-            nozzle_status = [s.nozzle for s in AirNozzleTable if s.cell == thermocouple.core_location]
-            if nozzle_status[0] in [AirNozzle.BLOCKED, AirNozzle.SUPER_SHORT, AirNozzle.COVERED]:
-                self.nonstandard_thermocouples.append(thermocouple)
+        self.nonstandard_thermocouples = nonstandard_thermocouples()
 
     def __coordinate_map(
         self,
@@ -904,122 +899,35 @@ class ThermocoupleAnalysis:
             radius_limit=radius_limit,
         )
 
-        x = np.asarray(xyz[0]).astype(float)
-        y = np.asarray(xyz[1]).astype(float)
-        n = x.size
-        r = np.hypot(x, y)
+        positions = np.asarray(xyz, dtype=float).T
 
-        if use_3d_dataset:
-            z = np.asarray(xyz[2]).astype(float)
-            A = np.column_stack([np.ones(n), x, y, z])
-            Ar = np.column_stack([np.ones(n), r, z])
-        else:
-            A = np.column_stack([np.ones(n), x, y])
-            Ar = np.column_stack([np.ones(n), r])
+        fits = [
+            fit_plane_gradients(positions, row.to_numpy(dtype=float)) for _, row in temperatures.iterrows()
+        ]
 
-        if use_3d_dataset:
-            all_gz = []
-            all_gz_err = []
+        columns = [
+            "intercept",
+            "intercept_err",
+            "x_gradient",
+            "x_gradient_err",
+            "y_gradient",
+            "y_gradient_err",
+            "z_gradient",
+            "z_gradient_err",
+            "radial_gradient",
+            "radial_gradient_err",
+            "radial_intercept",
+            "radial_intercept_err",
+            "radial_z_gradient",
+            "radial_z_gradient_err",
+        ]
+        if not use_3d_dataset:
+            columns = [c for c in columns if not c.startswith(("z_", "radial_z_"))]
 
-        all_gx = []
-        all_gy = []
-        all_gr = []
-        all_gx_err = []
-        all_gy_err = []
-        all_gr_err = []
-        intercepts = []
-        intercepts_err = []
-
-        all_gr_intercept = []
-        all_gr_intercept_err = []
-        all_gr_z = []
-        all_gr_z_err = []
-
-        for k, row in temperatures.iterrows():
-            temperature = row.to_numpy()
-            temperature = np.asarray(temperature).astype(float)
-
-            # Calculate x, y, z gradients
-            ATA = A.T @ A
-            ATy = A.T @ temperature
-
-            beta = np.linalg.lstsq(ATA, ATy, rcond=None)[0]
-
-            y_hat = A @ np.linalg.lstsq(A, temperature, rcond=None)[0]
-            dof = max(len(y) - A.shape[1], 1)
-            sigma2 = float(np.sum((y - y_hat) ** 2) / dof)
-            cov = sigma2 * np.linalg.pinv(ATA)
-            errs = np.sqrt(np.diag(cov))
-
-            intercepts.append(beta[0])
-            intercepts_err.append(errs[0])
-            all_gx.append(beta[1])
-            all_gx_err.append(errs[1])
-            all_gy.append(beta[2])
-            all_gy_err.append(errs[2])
-
-            if use_3d_dataset:
-                all_gz.append(beta[3])
-                all_gz_err.append(errs[3])
-
-            # Calculate r gradients
-            ArTAr = Ar.T @ Ar
-            ArTy = Ar.T @ temperature
-
-            beta_r = np.linalg.lstsq(ArTAr, ArTy, rcond=None)[0]
-
-            y_hat = Ar @ np.linalg.lstsq(Ar, temperature, rcond=None)[0]
-            dof = max(len(y) - Ar.shape[1], 1)
-            sigma2 = float(np.sum((temperature - y_hat) ** 2) / dof)
-            cov = sigma2 * np.linalg.pinv(ArTAr)
-            errs = np.sqrt(np.diag(cov))
-
-            all_gr_intercept.append(beta_r[0])
-            all_gr_intercept_err.append(errs[0])
-            all_gr.append(beta_r[1])
-            all_gr_err.append(errs[1])
-
-            if use_3d_dataset:
-                all_gr_z.append(beta_r[2])
-                all_gr_z_err.append(errs[2])
-
-        if use_3d_dataset:
-            return pd.DataFrame(
-                data={
-                    "intercept": intercepts,
-                    "intercept_err": intercepts_err,
-                    "x_gradient": all_gx,
-                    "x_gradient_err": all_gx_err,
-                    "y_gradient": all_gy,
-                    "y_gradient_err": all_gy_err,
-                    "z_gradient": all_gz,
-                    "z_gradient_err": all_gz_err,
-                    "radial_gradient": all_gr,
-                    "radial_gradient_err": all_gr_err,
-                    "radial_intercept": all_gr_intercept,
-                    "radial_intercept_err": all_gr_intercept_err,
-                    "radial_z_gradient": all_gr_z,
-                    "radial_z_gradient_err": all_gr_z_err,
-                },
-                index=temperatures.index,
-            )
-
-        else:
-            return pd.DataFrame(
-                data={
-                    "intercept": intercepts,
-                    "intercept_err": intercepts_err,
-                    "x_gradient": all_gx,
-                    "x_gradient_err": all_gx_err,
-                    "y_gradient": all_gy,
-                    "y_gradient_err": all_gy_err,
-                    "radial_gradient": all_gr,
-                    "radial_gradient_err": all_gr_err,
-                    "radial_intercept": all_gr_intercept,
-                    "radial_intercept_err": all_gr_intercept_err,
-                },
-                index=temperatures.index,
-            )
+        return pd.DataFrame(
+            data={column: [getattr(fit, column) for fit in fits] for column in columns},
+            index=temperatures.index,
+        )
 
     def compute_temp_stats_and_rate(
         self,
