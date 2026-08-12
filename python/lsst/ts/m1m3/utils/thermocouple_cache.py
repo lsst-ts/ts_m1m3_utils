@@ -71,7 +71,7 @@ class ThermocoupleCache:
     def __init__(
         self,
         max_data_age: float = 120.0,
-        max_missing: int = 12,
+        max_missing: int = 3,
         expected_names: set[str] | None = None,
     ):
         self.max_data_age = max_data_age
