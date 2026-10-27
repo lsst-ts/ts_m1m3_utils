@@ -94,6 +94,8 @@ class BumpTest:
         Bump test start time.
     end_time : `Time`
         Bump test end time.
+    client : `EfdClient`
+        EfdClient to query for additional data.
     result : `BumpTestStatus`
         Result of the bump test.
     """
@@ -101,11 +103,12 @@ class BumpTest:
     fa: ForceActuatorData
     start_time: Time
     end_time: Time
+    client: EfdClient
     result: BumpTestStatus | None
 
-    async def not_tested_failed(self, client: EfdClient) -> list[NotBumpTestedFailed]:
+    async def not_tested_failed(self) -> list[NotBumpTestedFailed]:
         """List of failed, non-bump tested FAs, with result."""
-        test_records = await client.influxql_query(
+        test_records = await self.client.influxql_query(
             'SELECT * FROM "efd"."autogen"."lsst.sal.MTM1M3.logevent_forceActuatorBumpTestStatistics" '
             f"WHERE time > '{self.start_time.isot}Z' "
             f"AND time <= '{self.end_time.isot}Z' "
@@ -203,7 +206,7 @@ class BumpTestTimes:
             )
             start_time -= start_delta
             if len(ends) == 0:
-                yield BumpTest(fa, start_time, None, None)
+                yield BumpTest(fa, start_time, None, self.client, None)
             else:
                 end_time = Time(ends.index[0])
 
@@ -211,5 +214,6 @@ class BumpTestTimes:
                     fa,
                     start_time,
                     end_time,
+                    self.client,
                     BumpTestStatus(ends[status].iloc[0]),
                 )

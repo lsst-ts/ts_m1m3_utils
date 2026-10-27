@@ -1,0 +1,1 @@
+Moved tests from ts_m1m3_cli.
