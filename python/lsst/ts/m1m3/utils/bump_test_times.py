@@ -49,8 +49,8 @@ class NotBumpTestedFailed:
     stage : `int`
         Test stage. This records axis and (failed non-tested) actuator ID. See
         get_axis and get_failed_actuator_id for details.
-    test_type : `int`
-        Test type - one of P(rimary), S(econdary), X, Y or Z.
+    test_type : `BumpTestType`
+        Bump test type of the tested (not failed non-tested) actuator.
     """
 
     tested_actuator_id: int
@@ -59,7 +59,7 @@ class NotBumpTestedFailed:
     maximum: float
     minimum: float
     stage: int
-    test_type: int
+    test_type: BumpTestType
 
     def get_axis(self) -> BumpTestType:
         """Returns failed axis. Failed axis is coded in stage field of the
@@ -76,8 +76,9 @@ class NotBumpTestedFailed:
         return BumpTestType.PRIMARY
 
     def get_failed_actuator_id(self) -> int:
-        """Returns failed rorce actuator ID. That is remained of stage field
-        after division by 1000. See bump_test.md in ts_m1m3support for details.
+        """Returns failed force actuator ID. That is the remainder of stage
+        field after division by 1000. See bump_test.md in ts_m1m3support for
+        details.
         """
         return self.stage % 1000
 
@@ -108,6 +109,10 @@ class BumpTest:
 
     async def not_tested_failed(self) -> list[NotBumpTestedFailed]:
         """List of failed, non-bump tested FAs, with result."""
+
+        assert self.start_time is not None, "When quering not-tested FAs, start_time must not be None"
+        assert self.end_time is not None, "When quering not-tested FAs, start_time must not be None"
+
         test_records = await self.client.influxql_query(
             'SELECT * FROM "efd"."autogen"."lsst.sal.MTM1M3.logevent_forceActuatorBumpTestStatistics" '
             f"WHERE time > '{self.start_time.isot}Z' "
