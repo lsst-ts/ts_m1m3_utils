@@ -1,0 +1,105 @@
+# This file is part of ts_m1m3_utils.
+#
+# Developed for the Vera C. Rubin Observatory Telescope and Site Systems.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+import unittest
+
+import pytest
+from astropy.time import Time
+from lsst_efd_client import EfdClient
+
+from lsst.ts.m1m3.utils import BumpTestTimes
+from lsst.ts.xml.tables.m1m3 import force_actuator_from_id
+
+
+class BumpTestTimesTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.client = EfdClient("usdf_efd")
+        self.btt = BumpTestTimes(self.client)
+
+    async def asyncTearDown(self) -> None:
+        await self.client.close()
+
+    async def get_tests(
+        self, actuator_id: int, start_t: Time, end_t: Time
+    ) -> tuple[BumpTestTimes, BumpTestTimes]:
+        fa = force_actuator_from_id(actuator_id)
+        primary = tuple(
+            [
+                tt
+                async for tt in self.btt.find_times(
+                    fa,
+                    True,
+                    start_t,
+                    end_t,
+                )
+            ]
+        )
+        secondary = tuple(
+            [
+                tt
+                async for tt in self.btt.find_times(
+                    fa,
+                    False,
+                    start_t,
+                    end_t,
+                )
+            ]
+        )
+        return (primary, secondary)
+
+    @pytest.mark.vcr
+    async def test_times_saa(self) -> None:
+        primary, secondary = await self.get_tests(
+            101, Time("2024-09-09 13:28:04"), Time("2024-09-16 13:28:04")
+        )
+
+        assert len(primary) == 10
+        assert len(secondary) == 0
+
+    @pytest.mark.vcr
+    async def test_times_daa(self) -> None:
+        primary, secondary = await self.get_tests(
+            435, Time("2024-09-09 13:28:04"), Time("2024-09-16 13:28:04")
+        )
+
+        assert len(primary) == 10
+        assert len(secondary) == 10
+
+    @pytest.mark.vcr
+    async def test_untested(self) -> None:
+        primary, secondary = await self.get_tests(
+            322, Time("2026-10-25 12:00:00"), Time("2026-10-27 12:00:00")
+        )
+
+        assert len(primary) == 4
+        assert len(secondary) == 4
+
+        untested = await primary[0].not_tested_failed()
+
+        assert len(untested) == 12
+
+        untested = await primary[1].not_tested_failed()
+
+        assert len(untested) == 0
+
+
+if __name__ == "__main__":
+    unittest.main()

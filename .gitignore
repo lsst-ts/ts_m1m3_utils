@@ -26,3 +26,4 @@ pytest_session.txt
 .ruff.toml
 .clang-format
 towncrier.toml
+.LICENSE.txt
