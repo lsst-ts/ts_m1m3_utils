@@ -8,6 +8,26 @@ Version History
 
 .. towncrier release notes start
 
+v0.7.0 (2026-10-29)
+===================
+
+New Features
+------------
+
+- Add M1M3 thermocouple utils for metric calculations. (`DM-52561 <https://rubinobs.atlassian.net//browse/DM-52561>`_)
+- Add ``ThermalGradients`` class and ``fit_plane_gradients`` method handling the M1M3 thermal gradients calculations. (`OSW-2472 <https://rubinobs.atlassian.net//browse/OSW-2472>`_)
+- Add ``ThermocoupleCache`` to cache live M1M3 thermal scanner temperatures. (`OSW-2472 <https://rubinobs.atlassian.net//browse/OSW-2472>`_)
+- Modify ``ThermocoupleAnalysis`` to use the plane-fit code from the ``ThermalGradients`` class. That fixes the Cartesian gradient error estimate (it was computed from the y coordinates instead of the temperature residuals). (`OSW-2472 <https://rubinobs.atlassian.net//browse/OSW-2472>`_)
+- Add methods to retrieve not-tested FA status. (`SSW-3081 <https://rubinobs.atlassian.net//browse/SSW-3081>`_)
+
+
+Other Changes and Additions
+---------------------------
+
+- Moved tests from ts_m1m3_cli. (`SSW-3081 <https://rubinobs.atlassian.net//browse/SSW-3081>`_)
+- License check. (`SSW-3081 <https://rubinobs.atlassian.net//browse/SSW-3081>`_)
+
+
 v0.6.2
 ------
 
