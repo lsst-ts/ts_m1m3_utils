@@ -8,6 +8,15 @@ Version History
 
 .. towncrier release notes start
 
+v0.8.0 (2026-11-13)
+===================
+
+Other Changes and Additions
+---------------------------
+
+- Moved Cache functions from ts_criopy. (`SSW-3156 <https://rubinobs.atlassian.net//browse/SSW-3156>`_)
+
+
 v0.7.0 (2026-10-29)
 ===================
 
